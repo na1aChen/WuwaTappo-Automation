@@ -43,7 +43,7 @@ button.reward-btn
 UI Automation 能直接读取 WebView2 中的 HTML Button、ClassName、Enabled 状态和 InvokePattern。使用该语义接口可以保持应用原有行为：
 
 - 登录状态检查；
-- 1,000 字符数检查；
+- 应用自身以 1,000 字符数作为宝箱入口显示门槛，自动补足目标设为 10,000；
 - 左右槽位检查；
 - 单次开启业务锁；
 - 服务端请求；
@@ -95,7 +95,7 @@ tests/
 活动累积器：
 
 - 从 `pet-dock-content` 中的数字节点读取当前字符数；
-- 使用 `SendInput` 批次，默认每键间隔 50 毫秒；
+- 使用 `SendInput` 批次，默认每键间隔 10 毫秒；
 - 每次发送后重新读取计数，并检查是否已经出现 `.reward-btn`；
 - 字符数达到 `characterThreshold` 后停止注入；
 - 出现宝箱按钮、停止请求或窗口消失时立即暂停；
@@ -243,9 +243,9 @@ status=pending
   "activity": {
     "enabled": true,
     "virtualKey": 135,
-    "intervalMilliseconds": 50,
+    "intervalMilliseconds": 10,
     "burstSize": 20,
-    "characterThreshold": 1000
+    "characterThreshold": 10000
   },
   "storage": {
     "stateDirectory": "state",
@@ -321,9 +321,9 @@ status=pending
 - 不调用 `SetForegroundWindow`；
 - 不移动鼠标；
 - 只发送无文本含义的 `F24` 键按下和抬起；
-- 活动输入默认每键间隔 50 毫秒；
+- 活动输入默认每键间隔 10 毫秒；
 - 每批发送 20 个 `F24` 后重新扫描宝箱和计数；
-- 字符数达到 1,000 后停止活动注入，避免无意义地持续占用输入队列；
+- 字符数达到 10,000 后停止活动注入，避免无意义地持续占用输入队列；
 - 仅调用按钮自身的 `InvokePattern`；
 - 控制台输出只写日志文件；
 - 测试优先使用 `dryRun=true`。

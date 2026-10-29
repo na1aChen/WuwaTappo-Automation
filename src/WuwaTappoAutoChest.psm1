@@ -11,9 +11,9 @@ $script:DefaultActionSettleMilliseconds = 2000
 $script:DefaultMaxOpensPerCycle = 2
 $script:DefaultActivityEnabled = $false
 $script:DefaultActivityVirtualKey = 135
-$script:DefaultActivityIntervalMilliseconds = 50
+$script:DefaultActivityIntervalMilliseconds = 10
 $script:DefaultActivityBurstSize = 20
-$script:DefaultActivityCharacterThreshold = 1000
+$script:DefaultActivityCharacterThreshold = 10000
 $script:DefaultLogMaxBytes = 5MB
 $script:DefaultLogMaxFiles = 5
 

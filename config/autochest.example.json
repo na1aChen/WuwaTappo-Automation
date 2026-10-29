@@ -22,9 +22,9 @@
   "activity": {
     "enabled": true,
     "virtualKey": 135,
-    "intervalMilliseconds": 50,
+    "intervalMilliseconds": 10,
     "burstSize": 20,
-    "characterThreshold": 1000
+    "characterThreshold": 10000
   },
   "storage": {
     "stateDirectory": "state",

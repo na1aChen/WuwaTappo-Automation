@@ -32,9 +32,9 @@ namespace WuwaTappoPortable
         public double MaxRuntimeMinutes;
         public bool ActivityEnabled;
         public int ActivityVirtualKey = 0x87;
-        public int ActivityIntervalMilliseconds = 50;
+        public int ActivityIntervalMilliseconds = 10;
         public int ActivityBurstSize = 20;
-        public long CharacterThreshold = 1000;
+        public long CharacterThreshold = 10000;
 
         public static NativeWorkerConfig Load(string path)
         {
@@ -241,6 +241,21 @@ namespace WuwaTappoPortable
             LoadAssetImageLookup();
             startedAt = DateTimeOffset.Now;
 
+            if (!PortableRuntime.IsElevated())
+            {
+                SetStatus(
+                    "blocked",
+                    "自动补次数需要管理员权限，请从控制面板重新启动后台",
+                    "administrator_required",
+                    null,
+                    false,
+                    null,
+                    0,
+                    new List<object>());
+                Log("ERROR", "administrator_required", new Dictionary<string, object>());
+                return 5;
+            }
+
             try
             {
                 lockStream = new FileStream(
@@ -298,6 +313,16 @@ namespace WuwaTappoPortable
                     string message = buttons.Count == 0
                         ? "当前未检测到可开启宝箱"
                         : "检测到宝箱，等待按钮可点击";
+                    if (buttons.Count == 0 &&
+                        activityEnabled &&
+                        characterCount.HasValue &&
+                        characterCount.Value < config.CharacterThreshold)
+                    {
+                        message = String.Format(
+                            "正在补足字符数：{0} / {1}",
+                            characterCount.Value,
+                            config.CharacterThreshold);
+                    }
                     SetStatus(
                         phase,
                         message,
@@ -317,7 +342,9 @@ namespace WuwaTappoPortable
                             activityLastResult = "character_threshold_reached";
                             SetStatus(
                                 "waiting_for_chest",
-                                "字符数已达到门槛，自动计数暂停",
+                                String.Format(
+                                    "字符数已达到 {0} 目标，自动计数暂停",
+                                    config.CharacterThreshold),
                                 null,
                                 target,
                                 true,

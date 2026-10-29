@@ -7,7 +7,8 @@
 ## 功能
 
 - 后台静默监测 `WuwaTappo.exe` 主窗口；
-- 字符数低于 1,000 时按需自动补充，达到门槛后停止输入；
+- 字符数低于 10,000 时持续自动补充，达到目标后停止输入；
+- 启动后台时通过 UAC 将隐藏 Worker 提升到管理员权限，以兼容高权限运行的在线版；
 - 检测到宝箱可开启后立即停止活动注入；
 - 通过 Windows UI Automation 查找真实的 `button.reward-btn`；
 - 识别左、右宝箱槽位；
@@ -79,7 +80,8 @@ WuwaTappoAutoChest.exe
 - PowerShell 7（`pwsh`，仅源码测试和重新构建需要；便携 EXE 不需要）；
 - 已安装并至少能手动正常运行的 Wuwa Tappo；
 - 已由用户手动完成登录；
-- Wuwa Tappo 主窗口存在。默认不自动启动应用，以避免触发 UAC 或重复授权。
+- 首次点击“启动后台”时需要允许 Windows UAC 管理员权限提示；
+- Wuwa Tappo 主窗口存在。程序不会自动启动 Wuwa Tappo；启动后台 Worker 时会单独请求管理员权限。
 
 当前调查环境：
 
@@ -128,9 +130,9 @@ Tauri 2.10.3 + WebView2 155.0.4283.62
 | `automation.dryRun` | `false` | 配置级只读模式 |
 | `activity.enabled` | `true` | 是否自动累积字符数 |
 | `activity.virtualKey` | `135` | 注入的 Windows 虚拟键，135 为 F24 |
-| `activity.intervalMilliseconds` | `50` | 每键间隔；越低越快，但会增加系统输入负载 |
+| `activity.intervalMilliseconds` | `10` | 每键间隔；仅在自动补足未达标时发送 |
 | `activity.burstSize` | `20` | 每批发送并随后检查宝箱的数量 |
-| `activity.characterThreshold` | `1000` | 达到该字符数后暂停活动注入 |
+| `activity.characterThreshold` | `10000` | 自动补足到该字符数后暂停活动注入 |
 | `storage.stateDirectory` | `state` | 状态目录 |
 | `storage.logDirectory` | `logs` | 日志目录 |
 
@@ -274,7 +276,7 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 
 - 活动累积依赖应用仍接受全局键盘计数；当前 UAT 构建已验证 F24 能增加字符数，升级后需复测。
 - 注入会向当前前台应用发送无文本含义的 F24，不切换焦点、不移动鼠标；极少数应用若占用 F24，可修改 `activity.virtualKey` 或禁用活动模式。
-- 默认仅在字符数低于 1,000 时注入；达到门槛后完全停止输入，只低频轮询宝箱，避免持续占用性能。
+- 默认在字符数低于 10,000 时持续注入；达到目标后完全停止输入，只低频轮询宝箱。宝箱入口仍由应用自身的 1,000 字符显示门槛控制。
 - 已验证一次真实自动开箱：`reward-btn` 被自动调用后消失，状态记录为 `confirmed`，证据为 `single_button_removed`。
 - UI Automation 依赖应用当前 `.reward-btn` 和 `reward-anchor--left/right` 结构；应用升级后需重新验证。
 - 真实物品名优先来自奖励图片 SHA-256。若 WebView2 命中旧缓存且没有写入新图片，同时资产 ID 也不在图鉴内，程序会明确显示“名称未提供”，不会猜测名称。

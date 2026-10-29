@@ -31,12 +31,14 @@ WuwaTappoAutoChest.exe
 
 .NET Framework 4.8 是 Windows 10/11 的常见系统组件。便携版不要求安装 PowerShell 7，后台也不使用 PowerShell。
 
+在线版 Wuwa Tappo 若以更高权限运行，Windows 会阻止普通权限进程发送 F24。因此 Worker 启动时会单独请求管理员权限；控制面板本身仍以普通权限运行。
+
 ## 3. 使用流程
 
 1. 解压 `WuwaTappoAutoChest-Portable.zip`；
 2. 启动并登录 Wuwa Tappo；
 3. 双击 `WuwaTappoAutoChest.exe`；
-4. 点击“启动后台”；
+4. 点击“启动后台”，并在 Windows UAC 提示中允许管理员权限；
 5. 可以关闭控制窗口，后台任务会继续运行；
 6. 再次打开 EXE 可查看状态或点击“停止后台”。
 
@@ -142,4 +144,4 @@ Worker CPU：约 0.70% 单核
 Worker + 控制面板工作集：约 78–88 MB
 ```
 
-字符数达到 1,000 后 Worker 不再发送活动输入，只按空闲间隔扫描宝箱。
+字符数达到 10,000 后 Worker 不再发送活动输入，只按空闲间隔扫描宝箱。应用自身仍要求至少 1,000 字符才会显示宝箱入口。

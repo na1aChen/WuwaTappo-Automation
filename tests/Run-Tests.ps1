@@ -70,7 +70,7 @@ try {
             virtualKey = 135
             intervalMilliseconds = 1000
             burstSize = 2
-            characterThreshold = 1000
+            characterThreshold = 10000
         }
         storage = [ordered]@{
             stateDirectory = $stateDirectory
@@ -92,7 +92,7 @@ try {
     Assert-Equal -Actual $config.Automation.DryRun -Expected $true -Name "配置加载 dryRun"
     Assert-Equal -Actual $config.Activity.VirtualKey -Expected 135 -Name "配置加载活动虚拟键"
     Assert-Equal -Actual $config.Activity.Enabled -Expected $false -Name "配置加载活动开关"
-    Assert-Equal -Actual $config.Activity.CharacterThreshold -Expected 1000 -Name "配置加载字符数补足门槛"
+    Assert-Equal -Actual $config.Activity.CharacterThreshold -Expected 10000 -Name "配置加载字符数补足目标"
     Assert-Equal `
         -Actual $config.Paths.StateDirectory `
         -Expected ([System.IO.Path]::GetFullPath($stateDirectory)) `
