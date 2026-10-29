@@ -1,0 +1,38 @@
+{
+  "app": {
+    "processName": "WuwaTappo",
+    "windowTitle": "Wuwa Tappo",
+    "processId": 0,
+    "webViewLocalStorageDirectory": "",
+    "launchIfMissing": false,
+    "executablePath": ""
+  },
+  "automation": {
+    "pollIntervalSeconds": 1,
+    "idlePollIntervalSeconds": 5,
+    "confirmationPollMilliseconds": 250,
+    "actionConfirmationTimeoutSeconds": 20,
+    "actionCooldownSeconds": 3,
+    "unknownOutcomeCooldownSeconds": 900,
+    "actionSettleMilliseconds": 500,
+    "maxOpensPerCycle": 2,
+    "maxRuntimeMinutes": 0,
+    "dryRun": false
+  },
+  "activity": {
+    "enabled": true,
+    "virtualKey": 135,
+    "intervalMilliseconds": 50,
+    "burstSize": 20,
+    "characterThreshold": 1000
+  },
+  "storage": {
+    "stateDirectory": "state",
+    "logDirectory": "logs"
+  },
+  "logging": {
+    "fileName": "autochest.jsonl",
+    "maxFileBytes": 5242880,
+    "maxFiles": 5
+  }
+}

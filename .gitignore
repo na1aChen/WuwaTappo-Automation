@@ -1,0 +1,27 @@
+# 本机运行配置与运行数据
+config/autochest.json
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+
+# 状态、日志和临时文件
+state/
+logs/
+*.tmp
+*.log
+*.log.*
+
+# PowerShell 与测试缓存
+.pytest_cache/
+.vscode/
+coverage/
+
+# 生成的图鉴数据与浏览器测试产物
+gallery/
+.playwright-cli/
+dist/
+docs/ui-*.png
+runtime/
