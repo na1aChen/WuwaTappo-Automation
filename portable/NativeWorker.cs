@@ -241,21 +241,6 @@ namespace WuwaTappoPortable
             LoadAssetImageLookup();
             startedAt = DateTimeOffset.Now;
 
-            if (!PortableRuntime.IsElevated())
-            {
-                SetStatus(
-                    "blocked",
-                    "自动补次数需要管理员权限，请从控制面板重新启动后台",
-                    "administrator_required",
-                    null,
-                    false,
-                    null,
-                    0,
-                    new List<object>());
-                Log("ERROR", "administrator_required", new Dictionary<string, object>());
-                return 5;
-            }
-
             try
             {
                 lockStream = new FileStream(
@@ -1879,7 +1864,8 @@ namespace WuwaTappoPortable
             public UIntPtr dwExtraInfo;
         }
 
-        [StructLayout(LayoutKind.Explicit, Size = 32)]
+        // Win32 INPUT on x86 is 28 bytes: 4-byte type + 24-byte union.
+        [StructLayout(LayoutKind.Explicit, Size = 24)]
         private struct INPUTUNION
         {
             [FieldOffset(0)]

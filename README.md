@@ -8,7 +8,6 @@
 
 - 后台静默监测 `WuwaTappo.exe` 主窗口；
 - 字符数低于 10,000 时持续自动补充，达到目标后停止输入；
-- 启动后台时通过 UAC 将隐藏 Worker 提升到管理员权限，以兼容高权限运行的在线版；
 - 检测到宝箱可开启后立即停止活动注入；
 - 通过 Windows UI Automation 查找真实的 `button.reward-btn`；
 - 识别左、右宝箱槽位；
@@ -80,8 +79,7 @@ WuwaTappoAutoChest.exe
 - PowerShell 7（`pwsh`，仅源码测试和重新构建需要；便携 EXE 不需要）；
 - 已安装并至少能手动正常运行的 Wuwa Tappo；
 - 已由用户手动完成登录；
-- 首次点击“启动后台”时需要允许 Windows UAC 管理员权限提示；
-- Wuwa Tappo 主窗口存在。程序不会自动启动 Wuwa Tappo；启动后台 Worker 时会单独请求管理员权限。
+- Wuwa Tappo 主窗口存在。默认不自动启动应用，以避免触发 UAC 或重复授权。
 
 当前调查环境：
 

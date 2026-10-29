@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Security.Principal;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -146,26 +145,16 @@ namespace WuwaTappoPortable
             startInfo.FileName = executable;
             startInfo.Arguments = "--worker-background";
             startInfo.WorkingDirectory = BaseDirectory;
+            startInfo.UseShellExecute = false;
+            startInfo.CreateNoWindow = true;
             startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            if (IsElevated())
-            {
-                startInfo.UseShellExecute = false;
-                startInfo.CreateNoWindow = true;
-            }
-            else
-            {
-                startInfo.UseShellExecute = true;
-                startInfo.Verb = "runas";
-            }
             try
             {
                 Process.Start(startInfo);
             }
             catch (Exception ex)
             {
-                error = IsElevated()
-                    ? "无法创建后台进程：" + ex.Message
-                    : "自动补次数需要管理员权限。请重新点击“启动后台”，并在 Windows UAC 提示中选择“是”。";
+                error = "无法创建后台进程：" + ex.Message;
                 return 1;
             }
 
@@ -182,22 +171,6 @@ namespace WuwaTappoPortable
             }
             error = "后台进程在 20 秒内没有写出状态，请检查 runtime\\logs。";
             return 3;
-        }
-
-        public static bool IsElevated()
-        {
-            try
-            {
-                using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
-                {
-                    WindowsPrincipal principal = new WindowsPrincipal(identity);
-                    return principal.IsInRole(WindowsBuiltInRole.Administrator);
-                }
-            }
-            catch
-            {
-                return false;
-            }
         }
 
         public static int StopWorker(out string error)

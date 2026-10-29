@@ -637,7 +637,7 @@ namespace WuwaTappoPortable
             readmeButton.Click += delegate { OpenSafely(PortableRuntime.OpenReadme); };
 
             Label footer = new Label();
-            footer.Text = "关闭此窗口不会停止后台  ·  启动后台时需允许管理员权限以自动补次数";
+            footer.Text = "关闭此窗口不会停止后台任务  ·  首次使用请先启动并登录 Wuwa Tappo";
             footer.ForeColor = CodexPalette.Muted;
             footer.BackColor = CodexPalette.Background;
             footer.Font = CodexFonts.Mono(8f, FontStyle.Regular);
