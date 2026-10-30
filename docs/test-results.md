@@ -813,4 +813,31 @@ Delta: 1000
 - 两次仍无增长才写入 `needs_focus`；
 - 记录 `activity_uia_recovery` 和 `activity_uia_recovery_failed` 日志。
 
-当前已通过 C# 编译和既有回归测试；完整的 100000 次长任务及“页面停止接受 F24 后由 UIA 成功恢复”的真实场景仍需要下一次条件出现时继续验收。
+当前已通过 C# 编译和既有回归测试。完整的 100000 次长任务已经通过；“页面停止接受 F24 后由 UIA 成功恢复”的真实场景仍需下一次条件出现时继续验收。
+
+### 13.5 100000 次端到端长任务
+
+使用 Hybrid 便携版 Worker 提交一次性增加 100000：
+
+```text
+起始字符数：177208
+目标字符数：277208
+最终字符数：277230
+已发送 F24：100267
+最终状态：completed
+耗时：约 5 分 22 秒
+Worker 内存：42.4–43.0 MB
+```
+
+过程中：
+
+```text
+activity_uia_recovery：0
+activity_uia_recovery_failed：0
+input_not_counted：0
+needs_focus：未出现
+```
+
+本次 F24 从约 4 万到 10 万完整跑完，没有复现此前“无干预只完成一半”的问题。22 个字符的最终偏差来自运行期间 UI 数值刷新与批次边界，不是宝箱重复提交。
+
+由于本次没有出现 F24 停摆，UIA 恢复分支没有在真实长任务中触发；该分支的单次 `InvokePattern` 已单独验证可增加 1 个字符。下一次出现 `input_not_counted` 时应检查 `activity_uia_recovery` 日志。
