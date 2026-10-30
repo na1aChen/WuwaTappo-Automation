@@ -59,6 +59,8 @@ WuwaTappoAutoChest.exe
 
 便携版使用原生 C# 后台进程，只依赖 Windows 自带的 .NET Framework 4.8 和 UI Automation，不需要 PowerShell 7，也不会再启动 PowerShell Worker。采用 x86 便携构建并加入按可见行渲染、UIA 属性缓存和自适应扫描后，实测 Worker 约 43.3 MB，Worker 加控制面板约 78–88 MB，空闲 CPU 约 0.7% 单核。必须发送完整 ZIP，不能只发送 EXE。详细说明见 [docs/portable.md](docs/portable.md)。
 
+自动补次数采用每 100 个 F24 合并为一次 `SendInput` 的批量方式。实测补充 1500 次约 3.9 秒，补足阶段约占 10.5% 单核；达标后的空闲占用约 0.62% 单核，Worker 内存约 41 MB。
+
 控制面板采用 Codex 风格深色界面，状态区和历史记录区为纯黑背景，指标卡和按钮使用响应式流式布局，支持窗口缩放和 DPI 缩放。最小推荐尺寸为 740 × 700。
 
 ## 自动化边界
@@ -128,8 +130,8 @@ Tauri 2.10.3 + WebView2 155.0.4283.62
 | `automation.dryRun` | `false` | 配置级只读模式 |
 | `activity.enabled` | `true` | 是否自动累积字符数 |
 | `activity.virtualKey` | `135` | 注入的 Windows 虚拟键，135 为 F24 |
-| `activity.intervalMilliseconds` | `10` | 每键间隔；仅在自动补足未达标时发送 |
-| `activity.burstSize` | `20` | 每批发送并随后检查宝箱的数量 |
+| `activity.intervalMilliseconds` | `0` | 每键附加等待；0 表示按系统吞吐执行 |
+| `activity.burstSize` | `500` | 每批发送并随后检查宝箱的数量，内部按 100 键合并调用 |
 | `activity.characterThreshold` | `10000` | 自动补足到该字符数后暂停活动注入 |
 | `storage.stateDirectory` | `state` | 状态目录 |
 | `storage.logDirectory` | `logs` | 日志目录 |

@@ -32,8 +32,8 @@ namespace WuwaTappoPortable
         public double MaxRuntimeMinutes;
         public bool ActivityEnabled;
         public int ActivityVirtualKey = 0x87;
-        public int ActivityIntervalMilliseconds = 10;
-        public int ActivityBurstSize = 20;
+        public int ActivityIntervalMilliseconds;
+        public int ActivityBurstSize = 500;
         public long CharacterThreshold = 10000;
 
         public static NativeWorkerConfig Load(string path)
@@ -648,18 +648,21 @@ namespace WuwaTappoPortable
                 return result;
             }
 
-            for (int index = 0; index < config.ActivityBurstSize; index++)
+            int remaining = config.ActivityBurstSize;
+            while (remaining > 0)
             {
                 if (File.Exists(stopPath))
                 {
                     result.Reason = "stop_requested";
                     break;
                 }
+                int batchSize = Math.Min(100, remaining);
                 try
                 {
-                    NativeInput.SendKey((byte)config.ActivityVirtualKey);
-                    result.PressesSent++;
-                    activityKeysSent++;
+                    NativeInput.SendKeys((byte)config.ActivityVirtualKey, batchSize);
+                    result.PressesSent += batchSize;
+                    activityKeysSent += batchSize;
+                    remaining -= batchSize;
                 }
                 catch (Exception ex)
                 {
@@ -669,7 +672,7 @@ namespace WuwaTappoPortable
                     break;
                 }
                 if (config.ActivityIntervalMilliseconds > 0 &&
-                    !WaitWithStop(config.ActivityIntervalMilliseconds))
+                    !WaitWithStop(config.ActivityIntervalMilliseconds * batchSize))
                 {
                     result.Reason = "stop_requested";
                     break;
@@ -682,6 +685,12 @@ namespace WuwaTappoPortable
                 if (FindRewardButtons(target.Root).Count > 0)
                     result.Reason = "reward_ready";
                 result.CountAfter = FindCharacterCount(target.Root);
+                if (result.CountAfter.HasValue)
+                {
+                    cachedCharacterCount = result.CountAfter;
+                    cachedCharacterCountAt = DateTimeOffset.Now;
+                    cachedCharacterCountProcessId = target.ProcessId;
+                }
             }
             if (!result.InjectionFailed &&
                 result.Reason != "reward_ready" &&
@@ -1917,6 +1926,27 @@ namespace WuwaTappoPortable
             inputs[1].u.ki.wVk = virtualKey;
             inputs[1].u.ki.dwFlags = KEYEVENTF_KEYUP;
             uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            if (sent != inputs.Length)
+                throw new InvalidOperationException("SendInput failed: " + Marshal.GetLastWin32Error());
+        }
+
+        public static void SendKeys(byte virtualKey, int count)
+        {
+            int keyCount = Math.Max(1, count);
+            INPUT[] inputs = new INPUT[keyCount * 2];
+            for (int index = 0; index < keyCount; index++)
+            {
+                int offset = index * 2;
+                inputs[offset].type = INPUT_KEYBOARD;
+                inputs[offset].u.ki.wVk = virtualKey;
+                inputs[offset + 1].type = INPUT_KEYBOARD;
+                inputs[offset + 1].u.ki.wVk = virtualKey;
+                inputs[offset + 1].u.ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            uint sent = SendInput(
+                (uint)inputs.Length,
+                inputs,
+                Marshal.SizeOf(typeof(INPUT)));
             if (sent != inputs.Length)
                 throw new InvalidOperationException("SendInput failed: " + Marshal.GetLastWin32Error());
         }

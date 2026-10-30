@@ -95,7 +95,7 @@ tests/
 活动累积器：
 
 - 从 `pet-dock-content` 中的数字节点读取当前字符数；
-- 使用 `SendInput` 批次，默认每键间隔 10 毫秒；
+- 使用 `SendInput` 批量调用，每 100 个按键合并为一次系统调用；
 - 每次发送后重新读取计数，并检查是否已经出现 `.reward-btn`；
 - 字符数达到 `characterThreshold` 后停止注入；
 - 出现宝箱按钮、停止请求或窗口消失时立即暂停；
@@ -243,8 +243,8 @@ status=pending
   "activity": {
     "enabled": true,
     "virtualKey": 135,
-    "intervalMilliseconds": 10,
-    "burstSize": 20,
+    "intervalMilliseconds": 0,
+    "burstSize": 500,
     "characterThreshold": 10000
   },
   "storage": {
@@ -321,8 +321,8 @@ status=pending
 - 不调用 `SetForegroundWindow`；
 - 不移动鼠标；
 - 只发送无文本含义的 `F24` 键按下和抬起；
-- 活动输入默认每键间隔 10 毫秒；
-- 每批发送 20 个 `F24` 后重新扫描宝箱和计数；
+- 活动输入默认不增加额外逐键等待；
+- 每批发送 500 个 `F24` 后重新扫描宝箱和计数；
 - 字符数达到 10,000 后停止活动注入，避免无意义地持续占用输入队列；
 - 仅调用按钮自身的 `InvokePattern`；
 - 控制台输出只写日志文件；

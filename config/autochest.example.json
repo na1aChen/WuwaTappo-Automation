@@ -22,8 +22,8 @@
   "activity": {
     "enabled": true,
     "virtualKey": 135,
-    "intervalMilliseconds": 10,
-    "burstSize": 20,
+    "intervalMilliseconds": 0,
+    "burstSize": 500,
     "characterThreshold": 10000
   },
   "storage": {
