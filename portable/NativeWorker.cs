@@ -359,6 +359,20 @@ namespace WuwaTappoPortable
                                     0,
                                     new List<object>());
                             }
+                            else if (result.Reason == "input_not_counted")
+                            {
+                                activityEnabled = false;
+                                activityLastResult = result.Reason;
+                                SetStatus(
+                                    "blocked",
+                                    "自动输入没有增加字符数，补次数已停用",
+                                    "activity_disabled",
+                                    target,
+                                    true,
+                                    characterCount,
+                                    0,
+                                    new List<object>());
+                            }
                             else
                             {
                                 activityLastResult = result.Reason;
@@ -633,6 +647,7 @@ namespace WuwaTappoPortable
                 result.Reason = "character_count_unavailable";
                 return result;
             }
+
             for (int index = 0; index < config.ActivityBurstSize; index++)
             {
                 if (File.Exists(stopPath))
@@ -646,9 +661,10 @@ namespace WuwaTappoPortable
                     result.PressesSent++;
                     activityKeysSent++;
                 }
-                catch
+                catch (Exception ex)
                 {
                     result.InjectionFailed = true;
+                    result.ErrorMessage = ex.Message;
                     result.Reason = "input_injection_failed";
                     break;
                 }
@@ -666,6 +682,15 @@ namespace WuwaTappoPortable
                 if (FindRewardButtons(target.Root).Count > 0)
                     result.Reason = "reward_ready";
                 result.CountAfter = FindCharacterCount(target.Root);
+            }
+            if (!result.InjectionFailed &&
+                result.Reason != "reward_ready" &&
+                result.Reason != "stop_requested" &&
+                result.CountBefore.HasValue &&
+                result.CountAfter.HasValue &&
+                result.CountAfter.Value <= result.CountBefore.Value)
+            {
+                result.Reason = "input_not_counted";
             }
             return result;
         }
@@ -1835,6 +1860,7 @@ namespace WuwaTappoPortable
         private sealed class ActivityResult
         {
             public string Reason = "";
+            public string ErrorMessage = "";
             public int PressesSent;
             public long? CountBefore;
             public long? CountAfter;
@@ -1894,5 +1920,6 @@ namespace WuwaTappoPortable
             if (sent != inputs.Length)
                 throw new InvalidOperationException("SendInput failed: " + Marshal.GetLastWin32Error());
         }
+
     }
 }
