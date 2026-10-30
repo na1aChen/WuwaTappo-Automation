@@ -382,6 +382,50 @@ namespace WuwaTappoPortable
             return entries;
         }
 
+        public static int CountOpenedHistoryRecords()
+        {
+            if (!File.Exists(HistoryFile))
+                return 0;
+            int count = 0;
+            try
+            {
+                using (FileStream stream = new FileStream(
+                    HistoryFile,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete))
+                using (StreamReader reader = new StreamReader(
+                    stream,
+                    System.Text.Encoding.UTF8,
+                    true))
+                {
+                    JavaScriptSerializer serializer = new JavaScriptSerializer();
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (String.IsNullOrWhiteSpace(line))
+                            continue;
+                        try
+                        {
+                            Dictionary<string, object> record =
+                                serializer.Deserialize<Dictionary<string, object>>(line);
+                            if (record != null &&
+                                (GetString(record, "status") == "confirmed" ||
+                                 GetString(record, "result") == "opened"))
+                                count++;
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return count;
+        }
+
         public static bool StartManualRefill(int amount, out string error)
         {
             error = "";

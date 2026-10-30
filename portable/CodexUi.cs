@@ -464,6 +464,7 @@ namespace WuwaTappoPortable
         private CodexStatusDot statusDot;
         private readonly Label messageLabel;
         private readonly Label subMessageLabel;
+        private readonly Label historyCaption;
         private readonly CodexHistoryView historyView;
         private readonly TextBox refillAmountBox;
         private readonly Label refillStatusLabel;
@@ -597,7 +598,7 @@ namespace WuwaTappoPortable
             historyLayout.BackColor = CodexPalette.Black;
             historyPanel.Controls.Add(historyLayout);
 
-            Label historyCaption = new Label();
+            historyCaption = new Label();
             historyCaption.Text = "自动开箱历史  ·  最近 100 条  ·  跨 Worker 与 App 重启保存";
             historyCaption.AutoSize = false;
             historyCaption.Height = 20;
@@ -1210,9 +1211,13 @@ namespace WuwaTappoPortable
                 historySignature = signature;
 
                 List<HistoryEntry> entries = PortableRuntime.ReadHistory(100);
+                int totalOpened = PortableRuntime.CountOpenedHistoryRecords();
                 historyView.BeginUpdate();
                 try
                 {
+                    historyCaption.Text = String.Format(
+                        "自动开箱历史  ·  已开启总数 {0:N0}  ·  最近 100 条  ·  跨 Worker 与 App 重启保存",
+                        totalOpened);
                     historyView.VirtualListSize = 0;
                     historyEntries = entries;
                     historyView.VirtualListSize = entries.Count;
