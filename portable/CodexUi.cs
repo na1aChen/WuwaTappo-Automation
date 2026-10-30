@@ -465,6 +465,10 @@ namespace WuwaTappoPortable
         private readonly Label messageLabel;
         private readonly Label subMessageLabel;
         private readonly CodexHistoryView historyView;
+        private readonly TextBox refillAmountBox;
+        private readonly Label refillStatusLabel;
+        private readonly CodexButton refillStartButton;
+        private readonly CodexButton refillCancelButton;
         private readonly CodexButton startButton;
         private readonly CodexButton stopButton;
         private readonly CodexButton refreshButton;
@@ -486,8 +490,8 @@ namespace WuwaTappoPortable
             Font = CodexFonts.Ui(9.5f, FontStyle.Regular);
             AutoScaleMode = AutoScaleMode.Dpi;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(980, 760);
-            MinimumSize = new Size(740, 700);
+            ClientSize = new Size(980, 840);
+            MinimumSize = new Size(740, 780);
             MaximizeBox = true;
             DoubleBuffered = true;
 
@@ -496,12 +500,13 @@ namespace WuwaTappoPortable
             root.BackColor = CodexPalette.Background;
             root.Padding = new Padding(26, 22, 26, 20);
             root.ColumnCount = 1;
-            root.RowCount = 6;
+            root.RowCount = 7;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 216f));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             Controls.Add(root);
@@ -610,6 +615,77 @@ namespace WuwaTappoPortable
             historyView.RetrieveVirtualItem += RetrieveHistoryItem;
             historyLayout.Controls.Add(historyView, 0, 1);
 
+            RoundedPanel refillPanel = new RoundedPanel();
+            refillPanel.Dock = DockStyle.Fill;
+            refillPanel.Height = 76;
+            refillPanel.Margin = new Padding(0, 8, 0, 0);
+            refillPanel.Padding = new Padding(14, 9, 14, 8);
+            refillPanel.FillColor = CodexPalette.Surface;
+            refillPanel.BorderColor = CodexPalette.Border;
+            root.Controls.Add(refillPanel, 0, 4);
+
+            CodexTableLayoutPanel refillLayout = new CodexTableLayoutPanel();
+            refillLayout.Dock = DockStyle.Fill;
+            refillLayout.Margin = new Padding(0);
+            refillLayout.ColumnCount = 1;
+            refillLayout.RowCount = 2;
+            refillLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            refillLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            refillLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            refillLayout.BackColor = CodexPalette.Surface;
+            refillPanel.Controls.Add(refillLayout);
+
+            CodexFlowLayoutPanel refillControls = new CodexFlowLayoutPanel();
+            refillControls.AutoSize = true;
+            refillControls.WrapContents = true;
+            refillControls.FlowDirection = FlowDirection.LeftToRight;
+            refillControls.BackColor = CodexPalette.Surface;
+            refillControls.Margin = new Padding(0);
+            refillLayout.Controls.Add(refillControls, 0, 0);
+
+            Label refillCaption = new Label();
+            refillCaption.Text = "一次性补次数";
+            refillCaption.AutoSize = true;
+            refillCaption.ForeColor = CodexPalette.Text;
+            refillCaption.BackColor = CodexPalette.Surface;
+            refillCaption.Font = CodexFonts.Ui(9f, FontStyle.Bold);
+            refillCaption.Margin = new Padding(0, 9, 10, 0);
+            refillControls.Controls.Add(refillCaption);
+
+            refillAmountBox = new TextBox();
+            refillAmountBox.Text = "100000";
+            refillAmountBox.Width = 112;
+            refillAmountBox.BackColor = CodexPalette.Black;
+            refillAmountBox.ForeColor = CodexPalette.Text;
+            refillAmountBox.BorderStyle = BorderStyle.FixedSingle;
+            refillAmountBox.TextAlign = HorizontalAlignment.Right;
+            refillAmountBox.Font = CodexFonts.Mono(9f, FontStyle.Regular);
+            refillAmountBox.Margin = new Padding(0, 6, 8, 0);
+            refillControls.Controls.Add(refillAmountBox);
+
+            refillStartButton = CreateActionButton("开始一次补足", 136, true);
+            refillStartButton.Height = 34;
+            refillStartButton.Margin = new Padding(0, 4, 8, 0);
+            refillControls.Controls.Add(refillStartButton);
+
+            refillCancelButton = CreateActionButton("取消补足", 104, false);
+            refillCancelButton.Height = 34;
+            refillCancelButton.Margin = new Padding(0, 4, 0, 0);
+            refillControls.Controls.Add(refillCancelButton);
+
+            refillStatusLabel = new Label();
+            refillStatusLabel.Text = "一次性补足未启动";
+            refillStatusLabel.AutoSize = false;
+            refillStatusLabel.Height = 20;
+            refillStatusLabel.Dock = DockStyle.Fill;
+            refillStatusLabel.AutoEllipsis = true;
+            refillStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
+            refillStatusLabel.ForeColor = CodexPalette.Muted;
+            refillStatusLabel.BackColor = CodexPalette.Surface;
+            refillStatusLabel.Font = CodexFonts.Mono(8f, FontStyle.Regular);
+            refillStatusLabel.Margin = new Padding(0, 3, 0, 0);
+            refillLayout.Controls.Add(refillStatusLabel, 0, 1);
+
             FlowLayoutPanel actions = new CodexFlowLayoutPanel();
             actions.Dock = DockStyle.Fill;
             actions.AutoSize = true;
@@ -617,7 +693,7 @@ namespace WuwaTappoPortable
             actions.FlowDirection = FlowDirection.LeftToRight;
             actions.BackColor = CodexPalette.Background;
             actions.Padding = new Padding(0, 14, 0, 4);
-            root.Controls.Add(actions, 0, 4);
+            root.Controls.Add(actions, 0, 5);
 
             startButton = CreateActionButton("启动后台", 126, true);
             stopButton = CreateActionButton("停止后台", 126, false);
@@ -632,6 +708,8 @@ namespace WuwaTappoPortable
 
             startButton.Click += delegate { ExecuteAction("start"); };
             stopButton.Click += delegate { ExecuteAction("stop"); };
+            refillStartButton.Click += delegate { StartManualRefill(); };
+            refillCancelButton.Click += delegate { CancelManualRefill(); };
             refreshButton.Click += delegate { RefreshStatus(); };
             galleryButton.Click += delegate { OpenSafely(PortableRuntime.OpenGallery); };
             readmeButton.Click += delegate { OpenSafely(PortableRuntime.OpenReadme); };
@@ -645,7 +723,7 @@ namespace WuwaTappoPortable
             footer.Dock = DockStyle.Fill;
             footer.Height = 26;
             footer.TextAlign = ContentAlignment.MiddleLeft;
-            root.Controls.Add(footer, 0, 5);
+            root.Controls.Add(footer, 0, 6);
 
             refreshTimer = new System.Windows.Forms.Timer();
             refreshTimer.Interval = 3000;
@@ -820,6 +898,8 @@ namespace WuwaTappoPortable
         {
             startButton.Enabled = enabled;
             stopButton.Enabled = enabled;
+            refillStartButton.Enabled = enabled;
+            refillCancelButton.Enabled = enabled;
             refreshButton.Enabled = enabled;
             galleryButton.Enabled = enabled;
             readmeButton.Enabled = enabled;
@@ -833,6 +913,7 @@ namespace WuwaTappoPortable
                 nowUtc - lastLivenessCheckUtc < TimeSpan.FromSeconds(30))
             {
                 RefreshHistory();
+                RefreshManualRefill();
                 return;
             }
             bool runningNow = PortableRuntime.IsWorkerRunning();
@@ -840,6 +921,7 @@ namespace WuwaTappoPortable
             if (signature == statusSignature && runningNow == lastRunningState)
             {
                 RefreshHistory();
+                RefreshManualRefill();
                 return;
             }
             statusSignature = signature;
@@ -892,6 +974,151 @@ namespace WuwaTappoPortable
                         FormatCompactTime(snapshot.LastActionTime));
             }
             RefreshHistory();
+            RefreshManualRefill();
+        }
+
+        private void StartManualRefill()
+        {
+            if (busy)
+                return;
+            string value = (refillAmountBox.Text ?? "").Replace(",", "").Trim();
+            int amount;
+            if (!Int32.TryParse(value, out amount) || amount < 1000 || amount > 1000000)
+            {
+                MessageBox.Show(
+                    "请输入 1000 到 1000000 之间的本次增加数量。",
+                    "数量无效",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            busy = true;
+            SetButtonsEnabled(false);
+            refillStatusLabel.Text = "正在提交一次性补次数请求…";
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string error;
+                bool success = PortableRuntime.StartManualRefill(amount, out error);
+                try
+                {
+                    BeginInvoke(new Action(delegate
+                    {
+                        busy = false;
+                        SetButtonsEnabled(true);
+                        statusSignature = "";
+                        lastLivenessCheckUtc = DateTime.MinValue;
+                        RefreshStatus();
+                        if (!success)
+                        {
+                            MessageBox.Show(
+                                error,
+                                "无法启动一次性补足",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    }));
+                }
+                catch
+                {
+                }
+            });
+        }
+
+        private void CancelManualRefill()
+        {
+            if (busy)
+                return;
+            busy = true;
+            SetButtonsEnabled(false);
+            refillStatusLabel.Text = "正在取消一次性补次数…";
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string error;
+                bool success = PortableRuntime.CancelManualRefill(out error);
+                try
+                {
+                    BeginInvoke(new Action(delegate
+                    {
+                        busy = false;
+                        SetButtonsEnabled(true);
+                        statusSignature = "";
+                        lastLivenessCheckUtc = DateTime.MinValue;
+                        RefreshStatus();
+                        if (!success)
+                        {
+                            MessageBox.Show(
+                                error,
+                                "取消失败",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    }));
+                }
+                catch
+                {
+                }
+            });
+        }
+
+        private void RefreshManualRefill()
+        {
+            ManualRefillSnapshot snapshot = PortableRuntime.ReadManualRefill();
+            switch (snapshot.Status)
+            {
+                case "pending":
+                    refillStatusLabel.Text = String.Format(
+                        "已提交：本次增加 {0:N0}，等待 Worker 开始",
+                        snapshot.RequestedIncrement);
+                    refillStatusLabel.ForeColor = CodexPalette.Warning;
+                    break;
+                case "running":
+                    refillStatusLabel.Text = String.Format(
+                        "进行中：{0:N0} / {1:N0}，本次增加 {2:N0}，已发送 {3:N0}",
+                        snapshot.LastCount,
+                        snapshot.TargetCount,
+                        snapshot.RequestedIncrement,
+                        snapshot.SentCount);
+                    refillStatusLabel.ForeColor = CodexPalette.Accent;
+                    break;
+                case "completed":
+                    refillStatusLabel.Text = String.Format(
+                        "已完成：当前 {0:N0}，本次增加 {1:N0}；不会自动续补",
+                        snapshot.LastCount,
+                        snapshot.RequestedIncrement);
+                    refillStatusLabel.ForeColor = CodexPalette.Accent;
+                    break;
+                case "needs_focus":
+                    refillStatusLabel.Text =
+                        "输入没有计数：请手动点击一次 Wuwa Tappo，再重新开始";
+                    refillStatusLabel.ForeColor = CodexPalette.Warning;
+                    break;
+                case "cancel_requested":
+                    refillStatusLabel.Text = "正在取消一次性补次数…";
+                    refillStatusLabel.ForeColor = CodexPalette.Warning;
+                    break;
+                case "cancelled":
+                    refillStatusLabel.Text = "一次性补次数已取消";
+                    refillStatusLabel.ForeColor = CodexPalette.Muted;
+                    break;
+                case "failed":
+                    refillStatusLabel.Text = "一次性补次数失败：" +
+                        (String.IsNullOrWhiteSpace(snapshot.Error) ? "未知错误" : snapshot.Error);
+                    refillStatusLabel.ForeColor = CodexPalette.Error;
+                    break;
+                default:
+                    refillStatusLabel.Text = "一次性补足未启动；完成后不会自动续补";
+                    refillStatusLabel.ForeColor = CodexPalette.Muted;
+                    break;
+            }
+            bool active = snapshot.Status == "pending" ||
+                snapshot.Status == "running" ||
+                snapshot.Status == "cancel_requested";
+            if (!busy)
+            {
+                refillStartButton.Enabled = !active;
+                refillCancelButton.Enabled = active;
+            }
         }
 
         private static string GetFileSignature(string path)
@@ -916,6 +1143,7 @@ namespace WuwaTappoPortable
                 case "starting": return "启动中";
                 case "waiting_for_chest": return "等待宝箱";
                 case "candidate_detected": return "发现宝箱";
+                case "manual_refilling": return "一次性补足";
                 case "submitting": return "正在开启";
                 case "confirming": return "确认结果";
                 case "cooldown": return "冷却中";

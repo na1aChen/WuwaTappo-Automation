@@ -8,6 +8,7 @@
 
 - 后台静默监测 `WuwaTappo.exe` 主窗口；
 - 字符数低于 10,000 时持续自动补充，达到目标后停止输入；
+- 支持手动输入本次增加量，执行一次性补足并在完成后停止；
 - 检测到宝箱可开启后立即停止活动注入；
 - 通过 Windows UI Automation 查找真实的 `button.reward-btn`；
 - 识别左、右宝箱槽位；
@@ -59,9 +60,9 @@ WuwaTappoAutoChest.exe
 
 便携版使用原生 C# 后台进程，只依赖 Windows 自带的 .NET Framework 4.8 和 UI Automation，不需要 PowerShell 7，也不会再启动 PowerShell Worker。采用 x86 便携构建并加入按可见行渲染、UIA 属性缓存和自适应扫描后，实测 Worker 约 43.3 MB，Worker 加控制面板约 78–88 MB，空闲 CPU 约 0.7% 单核。必须发送完整 ZIP，不能只发送 EXE。详细说明见 [docs/portable.md](docs/portable.md)。
 
-自动补次数采用每 100 个 F24 合并为一次 `SendInput` 的批量方式。实测补充 1500 次约 3.9 秒，补足阶段约占 10.5% 单核；达标后的空闲占用约 0.62% 单核，Worker 内存约 41 MB。
+自动补次数采用每 500 个 F24 合并为一次 `SendInput` 的批量方式。一次性和旧自动模式共享这条输入路径；达标后的空闲占用约 0.62% 单核，Worker 内存约 41 MB。
 
-控制面板采用 Codex 风格深色界面，状态区和历史记录区为纯黑背景，指标卡和按钮使用响应式流式布局，支持窗口缩放和 DPI 缩放。最小推荐尺寸为 740 × 700。
+控制面板采用 Codex 风格深色界面，状态区和历史记录区为纯黑背景，指标卡和按钮使用响应式流式布局，支持窗口缩放和 DPI 缩放。最小推荐尺寸为 740 × 780。
 
 ## 自动化边界
 
@@ -97,7 +98,8 @@ Tauri 2.10.3 + WebView2 155.0.4283.62
 2. 打开 `dist/WuwaTappoAutoChest-Portable/WuwaTappoAutoChest.exe`；
 3. 点击“启动后台”；
 4. 控制面板显示运行状态、字符数、阶段、真实物品名和自动开箱历史；
-5. 关闭控制面板不会停止后台，再次打开 EXE 可查看历史或停止任务。
+5. 需要补次数时，在“一次性补次数”中输入 1,000–1,000,000，点击“开始一次补足”；
+6. 关闭控制面板不会停止后台，再次打开 EXE 可查看历史或停止任务。
 
 命令行入口：
 
@@ -128,10 +130,10 @@ Tauri 2.10.3 + WebView2 155.0.4283.62
 | `automation.maxOpensPerCycle` | `2` | 每轮最多尝试的槽位数 |
 | `automation.maxRuntimeMinutes` | `0` | 最大运行时间；`0` 表示不限制 |
 | `automation.dryRun` | `false` | 配置级只读模式 |
-| `activity.enabled` | `true` | 是否自动累积字符数 |
+| `activity.enabled` | `false` | 是否启用旧的持续自动计数；一次性补次数不受此开关限制 |
 | `activity.virtualKey` | `135` | 注入的 Windows 虚拟键，135 为 F24 |
 | `activity.intervalMilliseconds` | `0` | 每键附加等待；0 表示按系统吞吐执行 |
-| `activity.burstSize` | `500` | 每批发送并随后检查宝箱的数量，内部按 100 键合并调用 |
+| `activity.burstSize` | `1000` | 每轮目标上限，内部按 500 键合并并动态校验计数 |
 | `activity.characterThreshold` | `10000` | 自动补足到该字符数后暂停活动注入 |
 | `storage.stateDirectory` | `state` | 状态目录 |
 | `storage.logDirectory` | `logs` | 日志目录 |

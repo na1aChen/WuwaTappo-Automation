@@ -84,6 +84,19 @@ namespace WuwaTappoPortable
         public string ItemSource = "";
     }
 
+    internal sealed class ManualRefillSnapshot
+    {
+        public string RequestId = "";
+        public string Status = "not_started";
+        public long RequestedIncrement;
+        public long BaseCount;
+        public long TargetCount;
+        public long LastCount;
+        public long SentCount;
+        public string Error = "";
+        public string UpdatedAt = "";
+    }
+
     internal static class PortableRuntime
     {
         public static readonly string BaseDirectory =
@@ -92,6 +105,7 @@ namespace WuwaTappoPortable
         public static readonly string ConfigPath = Path.Combine(RuntimeDirectory, @"config\autochest.json");
         public static readonly string StatusFile = Path.Combine(RuntimeDirectory, @"state\status.json");
         public static readonly string HistoryFile = Path.Combine(RuntimeDirectory, @"state\history.jsonl");
+        public static readonly string RefillRequestFile = Path.Combine(RuntimeDirectory, @"state\refill-request.json");
         public static readonly string PidFile = Path.Combine(RuntimeDirectory, @"state\worker.pid");
         public static readonly string StopFile = Path.Combine(RuntimeDirectory, @"state\stop.requested");
         public static readonly string GalleryPath = Path.Combine(RuntimeDirectory, @"gallery\index.html");
@@ -366,6 +380,99 @@ namespace WuwaTappoPortable
 
             entries.Reverse();
             return entries;
+        }
+
+        public static bool StartManualRefill(int amount, out string error)
+        {
+            error = "";
+            if (amount < 1000 || amount > 1000000)
+            {
+                error = "一次性补次数必须在 1,000 到 1,000,000 之间。";
+                return false;
+            }
+            if (!IsWorkerRunning() && StartWorker(out error) != 0)
+                return false;
+
+            Dictionary<string, object> request = new Dictionary<string, object> {
+                {"schema_version", 1},
+                {"request_id", Guid.NewGuid().ToString("N")},
+                {"status", "pending"},
+                {"requested_increment", amount},
+                {"created_at", DateTimeOffset.Now.ToString("o")},
+                {"updated_at", DateTimeOffset.Now.ToString("o")},
+                {"error", ""}
+            };
+            try
+            {
+                WriteObjectAtomic(RefillRequestFile, request);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "无法创建一次性补次数请求：" + ex.Message;
+                return false;
+            }
+        }
+
+        public static bool CancelManualRefill(out string error)
+        {
+            error = "";
+            Dictionary<string, object> request = ParseObject(RefillRequestFile);
+            if (request == null)
+                return true;
+            request["status"] = "cancel_requested";
+            request["updated_at"] = DateTimeOffset.Now.ToString("o");
+            try
+            {
+                WriteObjectAtomic(RefillRequestFile, request);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "无法取消一次性补次数：" + ex.Message;
+                return false;
+            }
+        }
+
+        public static ManualRefillSnapshot ReadManualRefill()
+        {
+            ManualRefillSnapshot snapshot = new ManualRefillSnapshot();
+            Dictionary<string, object> request = ParseObject(RefillRequestFile);
+            if (request == null)
+                return snapshot;
+            snapshot.RequestId = GetString(request, "request_id");
+            snapshot.Status = GetString(request, "status");
+            snapshot.RequestedIncrement = GetLong(request, "requested_increment");
+            snapshot.BaseCount = GetLong(request, "base_count");
+            snapshot.TargetCount = GetLong(request, "target_count");
+            snapshot.LastCount = GetLong(request, "last_count");
+            snapshot.SentCount = GetLong(request, "sent_count");
+            snapshot.Error = GetString(request, "error");
+            snapshot.UpdatedAt = GetString(request, "updated_at");
+            return snapshot;
+        }
+
+        private static long GetLong(Dictionary<string, object> data, string key)
+        {
+            if (data == null || !data.ContainsKey(key) || data[key] == null)
+                return 0;
+            long value;
+            return Int64.TryParse(Convert.ToString(data[key]), out value) ? value : 0;
+        }
+
+        private static void WriteObjectAtomic(string path, object value)
+        {
+            string directory = Path.GetDirectoryName(path);
+            Directory.CreateDirectory(directory);
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(
+                temporary,
+                new JavaScriptSerializer().Serialize(value),
+                new System.Text.UTF8Encoding(false));
+            if (File.Exists(path))
+                File.Replace(temporary, path, null);
+            else
+                File.Move(temporary, path);
         }
 
         private static List<string> ReadTailLines(

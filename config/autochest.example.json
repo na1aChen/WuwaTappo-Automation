@@ -20,10 +20,10 @@
     "dryRun": false
   },
   "activity": {
-    "enabled": true,
+    "enabled": false,
     "virtualKey": 135,
     "intervalMilliseconds": 0,
-    "burstSize": 500,
+    "burstSize": 1000,
     "characterThreshold": 10000
   },
   "storage": {

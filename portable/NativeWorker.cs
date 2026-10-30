@@ -33,7 +33,7 @@ namespace WuwaTappoPortable
         public bool ActivityEnabled;
         public int ActivityVirtualKey = 0x87;
         public int ActivityIntervalMilliseconds;
-        public int ActivityBurstSize = 500;
+        public int ActivityBurstSize = 1000;
         public long CharacterThreshold = 10000;
 
         public static NativeWorkerConfig Load(string path)
@@ -188,6 +188,7 @@ namespace WuwaTappoPortable
         private readonly string statusPath;
         private readonly string operationStatePath;
         private readonly string historyPath;
+        private readonly string refillRequestPath;
         private readonly string pidPath;
         private readonly string stopPath;
         private readonly string lockPath;
@@ -213,6 +214,15 @@ namespace WuwaTappoPortable
         private int cachedCharacterCountProcessId;
         private string lastStatusFingerprint = "";
         private DateTimeOffset lastStatusWriteAt;
+        private string manualRequestId = "";
+        private string manualRequestStatus = "";
+        private long manualRequestedIncrement;
+        private long manualBaseCount;
+        private long manualTargetCount;
+        private long manualLastCount;
+        private long manualSentCount;
+        private string manualError = "";
+        private bool manualModeEngaged;
 
         public NativeWorker()
         {
@@ -223,6 +233,7 @@ namespace WuwaTappoPortable
             statusPath = PortableRuntime.StatusFile;
             operationStatePath = Path.Combine(stateDirectory, "operation-state.json");
             historyPath = Path.Combine(stateDirectory, "history.jsonl");
+            refillRequestPath = Path.Combine(stateDirectory, "refill-request.json");
             pidPath = PortableRuntime.PidFile;
             stopPath = Path.Combine(stateDirectory, "stop.requested");
             lockPath = Path.Combine(stateDirectory, "worker.lock");
@@ -292,13 +303,29 @@ namespace WuwaTappoPortable
                     }
 
                     lastAppState = "found";
+                    RefreshManualRefillState();
                     List<RewardButtonInfo> buttons = FindRewardButtons(target.Root);
                     long? characterCount = ReadCharacterCountCached(target);
-                    string phase = buttons.Count == 0 ? "waiting_for_chest" : "candidate_detected";
+                    bool manualRefillActive =
+                        manualRequestStatus == "pending" ||
+                        manualRequestStatus == "running";
+                    string phase = manualRefillActive
+                        ? "manual_refilling"
+                        : (buttons.Count == 0 ? "waiting_for_chest" : "candidate_detected");
                     string message = buttons.Count == 0
                         ? "当前未检测到可开启宝箱"
                         : "检测到宝箱，等待按钮可点击";
+                    if (manualRefillActive)
+                    {
+                        message = manualTargetCount > 0
+                            ? String.Format(
+                                "一次性补足：{0} / {1}",
+                                manualLastCount,
+                                manualTargetCount)
+                            : "一次性补足请求已接收";
+                    }
                     if (buttons.Count == 0 &&
+                        !manualRefillActive &&
                         activityEnabled &&
                         characterCount.HasValue &&
                         characterCount.Value < config.CharacterThreshold)
@@ -320,7 +347,90 @@ namespace WuwaTappoPortable
 
                     if (buttons.Count == 0)
                     {
-                        if (activityEnabled &&
+                        if (manualRefillActive)
+                        {
+                            if (!characterCount.HasValue)
+                            {
+                                UpdateManualRefillState(
+                                    "failed",
+                                    manualLastCount,
+                                    manualSentCount,
+                                    "character_count_unavailable");
+                                activityLastResult = "manual_character_count_unavailable";
+                                continue;
+                            }
+                            if (manualTargetCount <= 0)
+                            {
+                                long? freshCount = FindCharacterCount(target.Root);
+                                if (freshCount.HasValue)
+                                {
+                                    characterCount = freshCount;
+                                    cachedCharacterCount = freshCount;
+                                    cachedCharacterCountAt = DateTimeOffset.Now;
+                                    cachedCharacterCountProcessId = target.ProcessId;
+                                }
+                                manualBaseCount = characterCount.Value;
+                                manualTargetCount = manualBaseCount + manualRequestedIncrement;
+                                manualLastCount = manualBaseCount;
+                                manualSentCount = 0;
+                                UpdateManualRefillState("running", manualLastCount, manualSentCount, "");
+                            }
+                            if (characterCount.Value >= manualTargetCount)
+                            {
+                                UpdateManualRefillState(
+                                    "completed",
+                                    characterCount.Value,
+                                    manualSentCount,
+                                    "");
+                                activityLastResult = "manual_refill_completed";
+                                continue;
+                            }
+
+                            ActivityResult manualResult = RunActivityBurst(manualTargetCount);
+                            characterCount = manualResult.CountAfter;
+                            manualSentCount += manualResult.PressesSent;
+                            if (characterCount.HasValue)
+                                manualLastCount = characterCount.Value;
+                            if (manualResult.InjectionFailed)
+                            {
+                                UpdateManualRefillState(
+                                    "failed",
+                                    manualLastCount,
+                                    manualSentCount,
+                                    String.IsNullOrWhiteSpace(manualResult.ErrorMessage)
+                                        ? "input_injection_failed"
+                                        : manualResult.ErrorMessage);
+                            }
+                            else if (manualResult.Reason == "input_not_counted")
+                            {
+                                UpdateManualRefillState(
+                                    "needs_focus",
+                                    manualLastCount,
+                                    manualSentCount,
+                                    "input_not_counted");
+                            }
+                            else if (manualLastCount >= manualTargetCount)
+                            {
+                                UpdateManualRefillState(
+                                    "completed",
+                                    manualLastCount,
+                                    manualSentCount,
+                                    "");
+                            }
+                            else
+                            {
+                                UpdateManualRefillState(
+                                    "running",
+                                    manualLastCount,
+                                    manualSentCount,
+                                    "");
+                            }
+                            activityLastResult = manualResult.Reason;
+                            continue;
+                        }
+
+                        if (!manualModeEngaged &&
+                            activityEnabled &&
                             characterCount.HasValue &&
                             characterCount.Value >= config.CharacterThreshold)
                         {
@@ -341,9 +451,9 @@ namespace WuwaTappoPortable
                             continue;
                         }
 
-                        if (activityEnabled)
+                        if (activityEnabled && !manualModeEngaged)
                         {
-                            ActivityResult result = RunActivityBurst();
+                            ActivityResult result = RunActivityBurst(config.CharacterThreshold);
                             characterCount = result.CountAfter;
                             if (result.InjectionFailed)
                             {
@@ -632,7 +742,7 @@ namespace WuwaTappoPortable
             return confirmed;
         }
 
-        private ActivityResult RunActivityBurst()
+        private ActivityResult RunActivityBurst(long stopAtCount)
         {
             ActivityResult result = new ActivityResult();
             TargetInfo target = FindTarget();
@@ -649,6 +759,7 @@ namespace WuwaTappoPortable
             }
 
             int remaining = config.ActivityBurstSize;
+            long? lastObserved = result.CountBefore;
             while (remaining > 0)
             {
                 if (File.Exists(stopPath))
@@ -656,13 +767,39 @@ namespace WuwaTappoPortable
                     result.Reason = "stop_requested";
                     break;
                 }
-                int batchSize = Math.Min(100, remaining);
+                int batchSize = Math.Min(500, remaining);
+                if (stopAtCount > 0 && lastObserved.HasValue)
+                {
+                    long needed = Math.Max(1, stopAtCount - lastObserved.Value);
+                    batchSize = (int)Math.Min(batchSize, needed);
+                }
                 try
                 {
                     NativeInput.SendKeys((byte)config.ActivityVirtualKey, batchSize);
                     result.PressesSent += batchSize;
                     activityKeysSent += batchSize;
                     remaining -= batchSize;
+                    long? observedCount;
+                    if (!WaitForCharacterProgress(
+                        target.Root,
+                        lastObserved,
+                        400,
+                        out observedCount))
+                    {
+                        result.Reason = File.Exists(stopPath)
+                            ? "stop_requested"
+                            : "input_not_counted";
+                        break;
+                    }
+                    if (observedCount.HasValue)
+                    {
+                        lastObserved = observedCount;
+                        cachedCharacterCount = observedCount;
+                        cachedCharacterCountAt = DateTimeOffset.Now;
+                        cachedCharacterCountProcessId = target.ProcessId;
+                        if (stopAtCount > 0 && observedCount.Value >= stopAtCount)
+                            break;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -672,7 +809,7 @@ namespace WuwaTappoPortable
                     break;
                 }
                 if (config.ActivityIntervalMilliseconds > 0 &&
-                    !WaitWithStop(config.ActivityIntervalMilliseconds * batchSize))
+                    !WaitWithStop(config.ActivityIntervalMilliseconds))
                 {
                     result.Reason = "stop_requested";
                     break;
@@ -684,7 +821,7 @@ namespace WuwaTappoPortable
             {
                 if (FindRewardButtons(target.Root).Count > 0)
                     result.Reason = "reward_ready";
-                result.CountAfter = FindCharacterCount(target.Root);
+                result.CountAfter = lastObserved ?? FindCharacterCount(target.Root);
                 if (result.CountAfter.HasValue)
                 {
                     cachedCharacterCount = result.CountAfter;
@@ -702,6 +839,39 @@ namespace WuwaTappoPortable
                 result.Reason = "input_not_counted";
             }
             return result;
+        }
+
+        private bool WaitForCharacterProgress(
+            AutomationElement root,
+            long? previousCount,
+            int timeoutMilliseconds,
+            out long? latestCount)
+        {
+            latestCount = previousCount;
+            DateTime deadline = DateTime.Now.AddMilliseconds(Math.Max(50, timeoutMilliseconds));
+            long stableValue = previousCount.HasValue ? previousCount.Value : -1;
+            int stableReads = 0;
+            while (DateTime.Now < deadline)
+            {
+                if (!WaitWithStop(5))
+                    return false;
+                long? observed = FindCharacterCount(root);
+                if (!observed.HasValue)
+                    continue;
+                if (previousCount.HasValue && observed.Value <= previousCount.Value)
+                    continue;
+                latestCount = observed;
+                if (observed.Value == stableValue)
+                    stableReads++;
+                else
+                {
+                    stableValue = observed.Value;
+                    stableReads = 0;
+                }
+                if (stableReads >= 0)
+                    return true;
+            }
+            return false;
         }
 
         private TargetInfo FindTarget()
@@ -1225,6 +1395,10 @@ namespace WuwaTappoPortable
                 activityEnabled.ToString(),
                 activityKeysSent.ToString(),
                 activityLastResult ?? "",
+                manualRequestStatus ?? "",
+                manualLastCount.ToString(),
+                manualTargetCount.ToString(),
+                manualSentCount.ToString(),
                 lastAction == null ? "" : JsonUtil.ToJson(lastAction),
                 JsonUtil.ToJson(buttons ?? new List<object>())
             });
@@ -1249,6 +1423,10 @@ namespace WuwaTappoPortable
                 {"activity_enabled", activityEnabled},
                 {"activity_keys_sent", activityKeysSent},
                 {"activity_last_result", activityLastResult},
+                {"manual_refill_status", manualRequestStatus},
+                {"manual_refill_last_count", manualLastCount},
+                {"manual_refill_target_count", manualTargetCount},
+                {"manual_refill_sent_count", manualSentCount},
                 {"reward_image_name_count", imageHashLookup == null ? 0 : imageHashLookup.Count},
                 {"reward_asset_id_count", assetIdLookup == null ? 0 : assetIdLookup.Count},
                 {"last_action", lastAction},
@@ -1800,6 +1978,81 @@ namespace WuwaTappoPortable
             {
                 return "";
             }
+        }
+
+        private void RefreshManualRefillState()
+        {
+            Dictionary<string, object> request = JsonUtil.ParseObject(refillRequestPath);
+            if (request == null)
+            {
+                manualRequestId = "";
+                manualRequestStatus = "";
+                manualModeEngaged = false;
+                return;
+            }
+
+            string requestId = JsonUtil.GetString(request, "request_id", "");
+            string status = JsonUtil.GetString(request, "status", "");
+            if (String.IsNullOrWhiteSpace(status))
+                return;
+            bool newRequest = !String.Equals(
+                requestId,
+                manualRequestId,
+                StringComparison.OrdinalIgnoreCase);
+            if (newRequest)
+            {
+                manualRequestId = requestId;
+                manualRequestedIncrement = JsonUtil.GetLong(
+                    request,
+                    "requested_increment",
+                    0);
+                manualBaseCount = JsonUtil.GetLong(request, "base_count", 0);
+                manualTargetCount = JsonUtil.GetLong(request, "target_count", 0);
+                manualLastCount = JsonUtil.GetLong(request, "last_count", 0);
+                manualSentCount = JsonUtil.GetLong(request, "sent_count", 0);
+                manualError = JsonUtil.GetString(request, "error", "");
+                if (status == "pending")
+                {
+                    manualBaseCount = 0;
+                    manualTargetCount = 0;
+                    manualLastCount = 0;
+                    manualSentCount = 0;
+                    manualError = "";
+                }
+            }
+            manualModeEngaged = true;
+            if (status == "cancel_requested")
+            {
+                manualRequestStatus = "cancelled";
+                UpdateManualRefillState("cancelled", manualLastCount, manualSentCount, "");
+                return;
+            }
+            manualRequestStatus = status;
+        }
+
+        private void UpdateManualRefillState(
+            string status,
+            long lastCount,
+            long sentCount,
+            string error)
+        {
+            manualRequestStatus = status;
+            manualLastCount = lastCount;
+            manualSentCount = sentCount;
+            manualError = error ?? "";
+            Dictionary<string, object> request = new Dictionary<string, object> {
+                {"schema_version", 1},
+                {"request_id", manualRequestId},
+                {"status", status},
+                {"requested_increment", manualRequestedIncrement},
+                {"base_count", manualBaseCount},
+                {"target_count", manualTargetCount},
+                {"last_count", lastCount},
+                {"sent_count", sentCount},
+                {"updated_at", DateTimeOffset.Now.ToString("o")},
+                {"error", manualError}
+            };
+            WriteJsonAtomic(refillRequestPath, request);
         }
 
         private bool WaitWithStop(int milliseconds)
