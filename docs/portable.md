@@ -82,7 +82,41 @@ WuwaTappoAutoChest.exe --open-gallery
 
 这些入口可用于桌面快捷方式或其他启动器。
 
-## 6. 数据与配置
+## 6. 一次性 CDP 补次数
+
+F24 在长时间运行后停止计数时，可使用独立程序：
+
+```text
+WuwaTappoAutoChest-CdpHost.exe
+```
+
+该程序需要管理员权限，适合一次补足至少一天所需的数量。推荐流程：
+
+1. 在主控制面板点击“停止后台”；
+2. 关闭主控制面板；
+3. 双击 CDP Host，并在 UAC 中选择“是”；
+4. 输入本次增加量，点击“启动 CDP 并补足”；
+5. 观察状态，完成、取消或失败后等待 Wuwa Tappo 自动恢复。
+
+运行期间 CDP Host 会：
+
+- 重启 Wuwa Tappo，并设置随机本机回环调试端口；
+- 等待 `.pet-dock-content` 和字符数完成加载；
+- 通过 WebView2 CDP 向页面宠物区域派发输入事件；
+- 每批发送后等待页面渲染并核对字符数；
+- 字符数连续不增长时停止；
+- 在成功、取消和异常路径中关闭调试端口并重启 Wuwa Tappo。
+
+不会读取或保存 Cookie、Token、Authorization 或账号资料，也不会产生系统鼠标事件。调试端口只用于本机 `127.0.0.1`。
+
+注意：
+
+- 必须等待主自动助手完全退出，否则 CDP Host 会拒绝运行；
+- 关闭窗口时如果任务仍在运行，程序会先请求取消并等待恢复；
+- 如果 Host 被任务管理器强制结束，调试端口可能随 Wuwa Tappo 保留到下次重启；此时请关闭并重新打开 Wuwa Tappo；
+- 如果当前 Wuwa Tappo 版本禁用远程调试或不再接受页面输入，Host 会停止并恢复普通模式，不会无限重试。
+
+## 7. 数据与配置
 
 便携数据均在自身目录：
 
@@ -98,7 +132,13 @@ runtime/logs/
 
 奖励名称识别只读取在线版 Wuwa Tappo 的 WebView2 本地资产 ID 与图片缓存，并使用随包图鉴的 SHA-256 索引匹配真实物品名。不会读取或输出账号、密码、Cookie、Token、验证码、请求头或聊天内容。
 
-## 7. 离线图鉴
+CDP Host 的独立日志位于：
+
+```text
+runtime/logs/cdp-host.jsonl
+```
+
+## 8. 离线图鉴
 
 便携包内包含完整的 899 项离线图鉴：
 
@@ -108,7 +148,7 @@ runtime/gallery/index.html
 
 也可以通过控制面板的“打开全图鉴”进入。
 
-## 8. 安全边界
+## 9. 安全边界
 
 - 不包含账号、密码、Cookie、Token 或本机登录状态；
 - 不修改 Wuwa Tappo 安装目录；
@@ -116,7 +156,7 @@ runtime/gallery/index.html
 - 兑换码由官方服务端校验；
 - 需要登录或安全验证时必须由用户完成。
 
-## 9. 重建便携包
+## 10. 重建便携包
 
 ```powershell
 pwsh -NoProfile -File .\tools\Build-Portable.ps1 -Force
@@ -126,9 +166,10 @@ pwsh -NoProfile -File .\tools\Build-Portable.ps1 -Force
 
 - 复制配置、说明和离线图鉴；
 - 编译原生 C# Worker 和图形启动器；
+- 编译带 `requireAdministrator` 清单的独立 CDP Host；
 - 生成完整便携目录和 ZIP。
 
-## 10. 实测资源占用
+## 11. 实测资源占用
 
 原生 Worker 稳定空闲采样：
 

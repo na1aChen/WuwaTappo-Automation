@@ -535,3 +535,64 @@ WuwaTappo
 5. 因此实现采用“修改前缓存快照 + 开箱后新增/变化 PNG 的 SHA-256 精确匹配”，并将资产 ID 作为辅助路径。
 
 该方案不读取 Cookie、Token、账号资料或请求头，也不依赖离线版目录。若图片缓存未产生新文件且资产 ID 不在图鉴中，界面会明确显示“名称未提供”，不做猜测。
+
+### 11.10 WebView2 CDP 一次性补次数调查
+
+F24 长时间运行后停止计数的表现已经复现：
+
+- `SendInput` 返回成功；
+- 字符数在任务前期正常增长；
+- 后续相同 F24 输入不再增加字符数；
+- 当前程序检测到一批输入无增长后会停止，不继续空转；
+- 主 Worker 不会模拟桌面鼠标点击来恢复窗口激活。
+
+因此新增了“独立管理员 CDP Host”调查分支。其依据是 Wuwa Tappo 使用 Tauri 2.10.3 和 WebView2，页面来源为 `http://tauri.localhost`；WebView2 支持通过附加浏览器参数启用本机远程调试，并提供 `Runtime.evaluate` 与 `Input.dispatchMouseEvent`。
+
+已确认的页面结构：
+
+```text
+.pet-dock-content
+  .reward-countdown
+  字符数文本节点
+  .settings-btn
+```
+
+当前 UI Automation 实测宠物区域边界为：
+
+```text
+X=2312, Y=583, Width=200, Height=211
+```
+
+字符数不在该区域的第一段文本中，区域里还包含宝箱倒计时。因此 CDP 读取逻辑不能简单截取 `innerText` 的第一个数字，而应排除 `.reward-countdown` 后选择字符数叶子节点。
+
+计划使用的启动参数：
+
+```text
+WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=
+  --remote-debugging-port=<随机端口>
+  --remote-debugging-address=127.0.0.1
+```
+
+当前调查环境对该启动路径的限制：
+
+- 已正常结束旧 Wuwa Tappo 并重新启动；
+- 带远程调试参数的重启命令被当前执行策略拒绝；
+- 没有绕过执行策略；
+- Wuwa Tappo 随后已恢复普通启动；
+- 当前环境未取得管理员 UAC 交互，因此无法完成真实 CDP 页面连接和点击验收。
+
+已选择的安全边界：
+
+- 独立 EXE 声明 `requireAdministrator`，由用户在桌面上明确接受 UAC；
+- 不把管理员权限加入主 Worker；
+- 每次使用随机回环端口，只选择 `tauri.localhost` 页面；
+- 不读取 Cookie、Token、Authorization、账号资料或请求头；
+- 完成、取消和异常均关闭调试端口并重启 Wuwa Tappo；
+- 不修改存档、字符数或宝箱计时。
+
+仍未确认：
+
+- 目标桌面接受 UAC 后 WebView2 是否实际开放该随机回环端口；
+- 当前 Wuwa Tappo 1.0.3 是否接受 CDP 鼠标事件并计入字符数；
+- 页面输入吞吐和长任务稳定性；
+- 应用后续更新是否会改变 `.pet-dock-content` 结构或输入策略。

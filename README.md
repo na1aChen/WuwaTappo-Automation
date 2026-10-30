@@ -64,6 +64,35 @@ WuwaTappoAutoChest.exe
 
 控制面板采用 Codex 风格深色界面，状态区和历史记录区为纯黑背景，指标卡和按钮使用响应式流式布局，支持窗口缩放和 DPI 缩放。最小推荐尺寸为 740 × 780。
 
+### 一次性 WebView2 CDP 补次数
+
+便携目录还包含独立的管理员辅助程序：
+
+```text
+WuwaTappoAutoChest-CdpHost.exe
+```
+
+它用于 F24 长任务中途失效时的一次性补次数。使用步骤：
+
+1. 在主控制面板点击“停止后台”；
+2. 关闭主控制面板；
+3. 双击 `WuwaTappoAutoChest-CdpHost.exe`，在 UAC 提示中选择“是”；
+4. 输入本次增加量并启动；
+5. 完成、取消或失败后，等待 Wuwa Tappo 自动以无调试端口模式重新打开。
+
+CDP Host 会关闭并重启 Wuwa Tappo，通过随机 `127.0.0.1` 调试端口读取 `.pet-dock-content` 和字符数，再向页面内的宠物区域派发输入事件。它不读取或保存 Cookie、Token、Authorization、账号资料或请求头，也不产生系统级鼠标移动或点击。
+
+安全保护包括：
+
+- 检测到主自动助手仍在运行时拒绝启动；
+- 调试接口只接受回环地址和本次随机端口；
+- CDP 请求有超时，点击按小批发送并等待页面渲染；
+- 连续两轮字符数不增长时立即停止，不继续空转；
+- 无论成功、取消还是异常，都会在 `finally` 阶段关闭调试端口并重启 Wuwa Tappo；
+- 强制结束 CDP Host 进程属于异常中断，此时应人工关闭并重新打开 Wuwa Tappo。
+
+当前运行环境无法完成真实 CDP 运行验收，原因和已完成测试见 [docs/test-results.md](docs/test-results.md)。首次在目标机器使用时，会先做 UAC 和调试端口兼容性验证。
+
 ## 自动化边界
 
 以下内容有意不做：
@@ -75,6 +104,8 @@ WuwaTappoAutoChest.exe
 - 不直接调用 `/api/frontend/chests/open`；
 - 不导入或复制浏览器 Cookie、Authorization 或 Token；
 - 不开启应用尚未渲染出的宝箱。
+
+CDP Host 是单独的显式一次性入口，不会随主助手自动启动。
 
 ## 环境要求
 
@@ -88,7 +119,7 @@ WuwaTappoAutoChest.exe
 
 ```text
 Windows 11 专业版 10.0.26100
-Wuwa Tappo 1.0.2 UAT CN
+Wuwa Tappo 1.0.3 UAT CN
 Tauri 2.10.3 + WebView2 155.0.4283.62
 ```
 
@@ -217,6 +248,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\tests\Test-NativeRewardLookup.ps1
 ```
 
+### 便携包与 CDP Host 结构测试
+
+```powershell
+pwsh -NoProfile -File .\tools\Build-Portable.ps1 `
+  -OutputDirectory .\dist\WuwaTappoAutoChest-CdpTest `
+  -Force -SkipZip
+
+pwsh -NoProfile -File .\tests\Test-CdpHostPackage.ps1 `
+  -PackageDirectory .\dist\WuwaTappoAutoChest-CdpTest `
+  -ExpectEmptyState
+```
+
 ### 后台生命周期测试
 
 ```powershell
@@ -284,6 +327,7 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 - 真实物品名优先来自奖励图片 SHA-256。若 WebView2 命中旧缓存且没有写入新图片，同时资产 ID 也不在图鉴内，程序会明确显示“名称未提供”，不会猜测名称。
 - 当前 UAT 主程序签名状态为 `HashMismatch`。用户已确认信任该文件夹，但生产分发前仍建议重新校验可信安装包。
 - 未登录、Geetest、强制更新和维护公告需要人工处理。
+- CDP Host 已通过编译和包结构测试，但真实 UAC、回环调试端口和页面点击仍需在目标桌面完成验收；若应用禁止远程调试，Host 会退出并恢复普通启动。
 
 ## 项目结构
 
@@ -298,6 +342,8 @@ gallery/index.html              已生成的全图鉴页面
 gallery/images/                 899 张本地图鉴图片
 dist/                           便携目录与 ZIP
 portable/                       EXE 启动器源码
+portable/CdpHost.cs             管理员 WebView2 CDP 一次性补次数源码
+portable/cdp-host.manifest      CDP Host 的 requireAdministrator 清单
 scripts/                        启动、停止、状态和工作进程入口
 src/WuwaTappoAutoChest.psm1     核心自动化模块
 tests/Run-Tests.ps1             自动化测试

@@ -519,3 +519,110 @@ Worker 内存：约 41 MB
 ```
 
 继续增大内部批量后耗时不再明显改善，当前瓶颈是 Wuwa Tappo 自身处理 F24 的速度。一次性补足完成后不会自动续补，Worker 继续以低占用模式等待宝箱。
+
+## 11. 2026-10-30 独立 CDP Host 构建与静态验收
+
+本轮新增：
+
+```text
+portable/CdpHost.cs
+portable/cdp-host.manifest
+tests/Test-CdpHostPackage.ps1
+```
+
+### 11.1 便携构建
+
+实际执行：
+
+```powershell
+pwsh -NoLogo -NoProfile -NonInteractive `
+  -File .\tools\Build-Portable.ps1 `
+  -OutputDirectory .\dist\WuwaTappoAutoChest-CdpTest `
+  -Force -SkipZip
+```
+
+结果：
+
+```text
+主程序：WuwaTappoAutoChest.exe
+CDP Host：WuwaTappoAutoChest-CdpHost.exe
+主程序字节数：80,384
+CDP Host 字节数：33,792
+编译器退出码：0
+编译警告：0
+```
+
+### 11.2 CDP Host 包结构验收
+
+实际执行：
+
+```powershell
+pwsh -NoLogo -NoProfile -NonInteractive `
+  -File .\tests\Test-CdpHostPackage.ps1 `
+  -PackageDirectory .\dist\WuwaTappoAutoChest-CdpTest `
+  -ExpectEmptyState
+```
+
+结果：
+
+```text
+SUMMARY passed=17 failed=0
+```
+
+已验证：
+
+- 主程序和 CDP Host 存在；
+- CDP Host 为 x86 PE32；
+- CDP Host 为 Windows GUI 子系统；
+- 嵌入清单包含 `requireAdministrator`；
+- 嵌入清单不包含 `asInvoker`；
+- 嵌入清单包含 `PerMonitorV2`；
+- 便携配置没有写入本机 `WuwaTappo.exe` 路径；
+- 分享包初始状态目录和日志目录为空。
+
+### 11.3 隐藏窗口冒烟测试
+
+为避免触发 UAC 和真实 CDP 操作，使用同一份 `CdpHost.cs` 临时编译了一个不带管理员清单的测试副本，通过：
+
+```powershell
+Start-Process -FilePath <SmokeExe> -WindowStyle Hidden -PassThru
+```
+
+在后台静默启动。2 秒后实际结果：
+
+```text
+Running=True
+ProcessId=6812
+WorkingSetMB=25.1
+MainWindowHandle=0
+```
+
+进程保持运行，说明 WinForms 界面、依赖和初始化路径没有启动崩溃；测试结束后只终止了这个临时测试进程，并删除了临时目录。该测试没有启动 CDP、没有重启 Wuwa Tappo，也没有发送任何输入。
+
+### 11.4 既有功能回归
+
+实际执行：
+
+```text
+tests/Run-Tests.ps1
+SUMMARY passed=24 failed=0
+
+tests/Run-AtlasGalleryTests.ps1
+SUMMARY passed=15 failed=0
+```
+
+这些测试没有触发真实开箱、真实补次数或 CDP 输入。
+
+### 11.5 CDP 运行时验收状态
+
+当前未宣称 CDP 真实点击通过。原因是 CDP Host 使用 `requireAdministrator`，需要用户在交互桌面接受 UAC；当前自动化会话不能代替用户确认，而且此前直接带远程调试参数启动 Wuwa Tappo 的尝试被当前执行策略拒绝。
+
+仍未执行：
+
+- 用户桌面 UAC 后的随机回环端口连接；
+- Wuwa Tappo 1.0.3 对 `Input.dispatchMouseEvent` 的真实响应；
+- 真实 1,000 次、100,000 次字符增长；
+- 真实取消和异常后的普通模式恢复；
+- CDP Host 长任务资源占用。
+
+首次人工验证建议先输入 `1000`。确认界面显示的起始值到目标值准确增长，并确认完成后 Wuwa Tappo 被重启且调试端口关闭，再测试较大数量。

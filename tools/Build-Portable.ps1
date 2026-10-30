@@ -124,6 +124,12 @@ Wuwa Tappo 自动助手 - 便携版
 - 不修改 Wuwa Tappo 安装目录。
 - 不包含账号、密码、Cookie 或 Token。
 
+一次性 CDP 补次数：
+1. 先停止主助手后台并关闭主控制面板。
+2. 双击 WuwaTappoAutoChest-CdpHost.exe，并在 UAC 中选择“是”。
+3. 输入本次增加量后启动。程序只监听本机回环地址。
+4. 完成或取消后会自动关闭调试端口并以普通模式重启 Wuwa Tappo。
+
 快捷命令：
   WuwaTappoAutoChest.exe --start-background
   WuwaTappoAutoChest.exe --stop-background
@@ -182,6 +188,30 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exePath -PathType Leaf
     throw "便携启动器编译失败，csc 退出码：$LASTEXITCODE"
 }
 
+$cdpHostExePath = Join-Path $OutputDirectory "WuwaTappoAutoChest-CdpHost.exe"
+$cdpHostSource = Join-Path $projectRoot "portable\CdpHost.cs"
+$cdpHostManifest = Join-Path $projectRoot "portable\cdp-host.manifest"
+$cdpHostCompilerArguments = @(
+    "/nologo",
+    "/target:winexe",
+    "/platform:x86",
+    "/optimize+",
+    "/codepage:65001",
+    "/out:$cdpHostExePath",
+    "/win32manifest:$cdpHostManifest",
+    "/reference:$(Join-Path $frameworkDirectory 'System.dll')",
+    "/reference:$(Join-Path $frameworkDirectory 'System.Core.dll')",
+    "/reference:$(Join-Path $frameworkDirectory 'System.Drawing.dll')",
+    "/reference:$(Join-Path $frameworkDirectory 'System.Windows.Forms.dll')",
+    "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
+    $cdpHostSource
+)
+
+& $csc @cdpHostCompilerArguments
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $cdpHostExePath -PathType Leaf)) {
+    throw "CDP Host 编译失败，csc 退出码：$LASTEXITCODE"
+}
+
 $zipPath = "$OutputDirectory.zip"
 $checksumPath = "$zipPath.sha256"
 if (-not $SkipZip) {
@@ -200,8 +230,10 @@ if (-not $SkipZip) {
 [PSCustomObject]@{
     PortableDirectory = $OutputDirectory
     Executable = $exePath
+    CdpHostExecutable = $cdpHostExePath
     Zip = if ($SkipZip) { $null } else { $zipPath }
     Checksum = if ($SkipZip) { $null } else { $checksumPath }
     ExecutableBytes = (Get-Item -LiteralPath $exePath).Length
+    CdpHostExecutableBytes = (Get-Item -LiteralPath $cdpHostExePath).Length
     PackageBytes = if ($SkipZip) { $null } else { (Get-Item -LiteralPath $zipPath).Length }
 }
