@@ -144,15 +144,25 @@ namespace WuwaTappoCdpHost
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string error;
+                string errorDetail;
                 string finalStatus = "";
                 try
                 {
                     finalStatus = RunRefill(amount, source.Token);
                     error = "";
+                    errorDetail = "";
                 }
                 catch (Exception ex)
                 {
                     error = ex.Message;
+                    try
+                    {
+                        errorDetail = ex.ToString();
+                    }
+                    catch
+                    {
+                        errorDetail = ex.GetType().FullName + ": " + error;
+                    }
                 }
 
                 try
@@ -165,7 +175,11 @@ namespace WuwaTappoCdpHost
                         cancelButton.Enabled = false;
                         if (!String.IsNullOrWhiteSpace(error))
                         {
-                            WriteLog("run_failed", error);
+                            WriteLog(
+                                "run_failed",
+                                String.IsNullOrWhiteSpace(errorDetail)
+                                    ? error
+                                    : errorDetail);
                             SetStatus("失败：" + error);
                             MessageBox.Show(
                                 this,
@@ -444,18 +458,32 @@ namespace WuwaTappoCdpHost
         private static string FindWuwaExecutable()
         {
             List<string> candidates = new List<string>();
+            HashSet<string> seen = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string portableRoot = SplitParent(baseDirectory);
-            while (!String.IsNullOrWhiteSpace(portableRoot))
+            const int maxAncestorDepth = 32;
+            int depth = 0;
+            while (!String.IsNullOrWhiteSpace(portableRoot) &&
+                   depth < maxAncestorDepth)
             {
-                candidates.Add(Path.Combine(portableRoot, "WuwaTappo.exe"));
+                AddCandidate(
+                    candidates,
+                    seen,
+                    Path.Combine(portableRoot, "WuwaTappo.exe"));
                 portableRoot = SplitParent(portableRoot);
+                depth++;
             }
-            candidates.Add(Path.Combine(
+            if (!String.IsNullOrWhiteSpace(portableRoot))
+            {
+                throw new InvalidOperationException(
+                    "从便携目录向上查找 WuwaTappo.exe 时超过安全深度，已停止以避免内存耗尽。");
+            }
+            AddCandidate(candidates, seen, Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
                 "WuwaTappo",
                 "WuwaTappo.exe"));
-            candidates.Add(Path.Combine(
+            AddCandidate(candidates, seen, Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 "WuwaTappo",
                 "WuwaTappo.exe"));
@@ -466,7 +494,10 @@ namespace WuwaTappoCdpHost
                 {
                     try
                     {
-                        candidates.Add(process.MainModule.FileName);
+                        AddCandidate(
+                            candidates,
+                            seen,
+                            process.MainModule.FileName);
                     }
                     catch
                     {
@@ -486,13 +517,38 @@ namespace WuwaTappoCdpHost
             throw new FileNotFoundException("找不到 WuwaTappo.exe。");
         }
 
-        private static string SplitParent(string path)
+        private static void AddCandidate(
+            List<string> candidates,
+            HashSet<string> seen,
+            string candidate)
+        {
+            if (!String.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                candidates.Add(candidate);
+        }
+
+        internal static string SplitParent(string path)
         {
             if (String.IsNullOrWhiteSpace(path))
                 return "";
-            DirectoryInfo parent = Directory.GetParent(path.TrimEnd(
+            string trimmed = path.TrimEnd(
                 Path.DirectorySeparatorChar,
-                Path.AltDirectorySeparatorChar));
+                Path.AltDirectorySeparatorChar);
+            if (String.IsNullOrWhiteSpace(trimmed))
+                return "";
+
+            string root = Path.GetPathRoot(trimmed) ?? "";
+            if (!String.IsNullOrWhiteSpace(root) &&
+                String.Equals(
+                    trimmed,
+                    root.TrimEnd(
+                        Path.DirectorySeparatorChar,
+                        Path.AltDirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "";
+            }
+
+            DirectoryInfo parent = Directory.GetParent(trimmed);
             return parent == null ? "" : parent.FullName;
         }
 

@@ -258,6 +258,8 @@ pwsh -NoProfile -File .\tools\Build-Portable.ps1 `
 pwsh -NoProfile -File .\tests\Test-CdpHostPackage.ps1 `
   -PackageDirectory .\dist\WuwaTappoAutoChest-CdpTest `
   -ExpectEmptyState
+
+pwsh -NoProfile -File .\tests\Test-CdpHostPathWalk.ps1
 ```
 
 ### 后台生命周期测试

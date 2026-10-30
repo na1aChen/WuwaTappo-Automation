@@ -626,3 +626,100 @@ SUMMARY passed=15 failed=0
 - CDP Host 长任务资源占用。
 
 首次人工验证建议先输入 `1000`。确认界面显示的起始值到目标值准确增长，并确认完成后 Wuwa Tappo 被重启且调试端口关闭，再测试较大数量。
+
+## 12. 2026-10-31 CDP Host 启动前内存耗尽修复
+
+### 12.1 实际故障
+
+用户运行 CDP Host 后收到：
+
+```text
+System.OutOfMemoryException
+```
+
+故障时实测旧 Host 进程：
+
+```text
+Working Set：1606.2 MB
+Private Bytes：1597.0 MB
+Virtual Bytes：1882.5 MB
+Handles：352
+Threads：11
+TCP 连接：0
+```
+
+`runtime/logs/cdp-host.jsonl` 只有 `run_failed`，没有 `run_started`。这证明异常发生在重启 Wuwa Tappo 和连接 CDP 之前，问题位于 `FindWuwaExecutable()` 的祖先路径遍历，而不是 WebSocket 点击批次。
+
+### 12.2 根因
+
+原实现先去掉路径末尾分隔符，再调用 `Directory.GetParent()`。当输入为：
+
+```text
+E:\
+```
+
+去掉分隔符后变成盘符相对路径：
+
+```text
+E:
+```
+
+.NET Framework 在本次环境中把 `E:` 解析为 E 盘当前目录的父目录，而不是根目录。遍历因此从根目录重新进入已有的父目录链：
+
+```text
+E:\
+  -> E:\Program Files (x86)\WuwaTappo
+  -> E:\Program Files (x86)
+  -> E:\Program Files
+  -> E:\
+  -> 循环
+```
+
+候选 EXE 路径不断加入 `List<string>`，x86 Host 到达约 2 GB 地址空间限制后抛出 `OutOfMemoryException`。
+
+### 12.3 修复
+
+- 先用 `Path.GetPathRoot()` 识别盘符根目录和 UNC 根目录；
+- 根目录直接返回空父路径，不再把 `E:\` 转为 `E:`；
+- 祖先遍历增加 32 层安全上限；
+- 候选路径使用不区分大小写的 `HashSet<string>` 去重；
+- 超过安全深度时报告明确错误，不再继续分配内存；
+- 异常日志保留完整异常类型和堆栈。
+
+### 12.4 回归测试
+
+新增：
+
+```text
+tests/CdpHostSelfTest.cs
+tests/Test-CdpHostPathWalk.ps1
+```
+
+实际执行：
+
+```powershell
+pwsh -NoProfile -File .\tests\Test-CdpHostPathWalk.ps1
+```
+
+结果：
+
+```text
+PASS 根目录终止 C:\
+PASS 根目录终止 C:\
+PASS 根目录终止 E:\
+PASS 便携目录祖先遍历终止 depth=5
+SUMMARY passed=4 failed=0
+```
+
+修复后便携构建：
+
+```text
+CDP Host 编译：成功，0 警告
+CDP Host 字节数：34,816
+便携包结构测试：17/17 通过
+核心回归测试：24/24 通过
+分享 ZIP 状态文件：0
+分享 ZIP 日志文件：0
+```
+
+故障遗留的 1.6 GB 旧 Host 进程 PID 10212 已在确认无网络连接、无活动任务后结束，进程不再运行。主自动助手未受影响。
