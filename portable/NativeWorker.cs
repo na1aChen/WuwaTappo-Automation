@@ -1068,7 +1068,7 @@ namespace WuwaTappoPortable
             out string source)
         {
             source = "unresolved";
-            if (!String.IsNullOrWhiteSpace(popup.ItemName))
+            if (popup != null && !String.IsNullOrWhiteSpace(popup.ItemName))
             {
                 source = "popup_asset";
                 return popup.ItemName;

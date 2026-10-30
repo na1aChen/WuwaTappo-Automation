@@ -144,6 +144,16 @@ $workerType.GetField("webViewCacheDirectory", $instanceFlags).SetValue(
     $worker,
     $cacheDirectory
 )
+$resolveMethod = $workerType.GetMethod("ResolveRewardItemName", $instanceFlags)
+$resolveArguments = @($null, 0, "", $null)
+$fallbackName = $resolveMethod.Invoke($worker, $resolveArguments)
+$expectedFallback = [string]::Concat(
+    [char]0x672A, [char]0x8BC6, [char]0x522B, [char]0x7269, [char]0x54C1
+)
+if ($fallbackName -ne $expectedFallback) {
+    throw "Null reward popup fallback failed."
+}
+Write-Output "PASS null_popup_fallback=$fallbackName"
 $findMethod = $workerType.GetMethod("FindRewardCacheItemName", $instanceFlags)
 $before = [System.Collections.Generic.Dictionary[string,string]](
     New-Object 'System.Collections.Generic.Dictionary[string,string]'
