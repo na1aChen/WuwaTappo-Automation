@@ -84,6 +84,8 @@ WuwaTappoAutoChest.exe --open-gallery
 
 ## 6. 一次性 CDP 补次数
 
+当前 Wuwa Tappo 1.0.3 / WebView2 156 实测没有开放远程调试端口，因此不要优先使用 CDP。日常补次数请使用主控制面板的“一次性补次数”；CDP Host 仅保留用于其他版本兼容性诊断。
+
 F24 在长时间运行后停止计数时，可使用独立程序：
 
 ```text

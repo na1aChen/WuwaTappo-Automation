@@ -596,3 +596,34 @@ WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=
 - 当前 Wuwa Tappo 1.0.3 是否接受 CDP 鼠标事件并计入字符数；
 - 页面输入吞吐和长任务稳定性；
 - 应用后续更新是否会改变 `.pet-dock-content` 结构或输入策略。
+
+### 11.11 CDP 端口实测与 UIA 替代路径
+
+修复启动前内存问题后，CDP Host 已实际进入调试模式启动阶段，但端口 `52424` 在 30 秒内始终没有监听，日志返回：
+
+```text
+WebView2 CDP 未就绪。操作超时
+```
+
+程序随后按 `finally` 流程恢复普通模式。当前版本实测结论：
+
+- `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 没有形成可用 CDP 端口；
+- 不能把 WebView2 CDP 视为当前 1.0.3 构建的稳定自动化接口；
+- CDP Host 保留为实验诊断工具，不作为日常补次数主路径。
+
+进一步检查当前 UIA 树发现，`.pet-dock-content` 直接支持：
+
+```text
+InvokePattern
+ScrollItemPattern
+```
+
+实际单次 `InvokePattern` 可使字符数增加 1，并且不移动系统鼠标。连续快速调用会被页面合并，因此不能用于高频刷量，但可以在 F24 长时间运行后停止计数时重新激活页面输入处理。
+
+新的主方案是：
+
+1. F24 批量保持高速补次数；
+2. 1.2 秒无增长时执行一次 `.pet-dock-content` 的 UIA `InvokePattern`；
+3. 恢复后继续 F24；
+4. 同一批最多恢复两次；
+5. 失败后停止，不无限空转。

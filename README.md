@@ -66,6 +66,8 @@ WuwaTappoAutoChest.exe
 
 ### 一次性 WebView2 CDP 补次数
 
+当前 Wuwa Tappo 1.0.3 / WebView2 156 实测未开放远程调试端口，因此 CDP 入口仅作为实验和兼容性诊断功能，不推荐作为日常补次数路径。日常一次性补足请使用主控制面板中的“一次性补次数”。
+
 便携目录还包含独立的管理员辅助程序：
 
 ```text
@@ -92,6 +94,16 @@ CDP Host 会关闭并重启 Wuwa Tappo，通过随机 `127.0.0.1` 调试端口�
 - 强制结束 CDP Host 进程属于异常中断，此时应人工关闭并重新打开 Wuwa Tappo。
 
 当前运行环境无法完成真实 CDP 运行验收，原因和已完成测试见 [docs/test-results.md](docs/test-results.md)。首次在目标机器使用时，会先做 UAC 和调试端口兼容性验证。
+
+### UIA 无鼠标输入恢复
+
+F24 批量输入仍是主路径。新 Worker 在一次批次 1.2 秒没有增长时，会对 `.pet-dock-content` 调用 UI Automation `InvokePattern`，用它重新激活页面输入处理，然后继续 F24。该调用不移动系统鼠标、不抢前台焦点，也不会连续盲目触发。
+
+实测：
+
+- 单次 `InvokePattern`：字符数增加 1；
+- 1000 个 F24：字符数精确增加 1000，实际调用耗时约 2.7 秒；
+- 连续快速调用 `InvokePattern` 会被页面合并，因此不会采用“一毫秒一个 UIA 点击”的伪高速方案。
 
 ## 自动化边界
 

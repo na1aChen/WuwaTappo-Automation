@@ -723,3 +723,94 @@ CDP Host 字节数：34,816
 ```
 
 故障遗留的 1.6 GB 旧 Host 进程 PID 10212 已在确认无网络连接、无活动任务后结束，进程不再运行。主自动助手未受影响。
+
+## 13. 2026-10-31 CDP 端口未开放与 UIA 回退
+
+### 13.1 CDP 实测失败
+
+修复路径遍历后再次运行 CDP Host：
+
+```text
+run_started: amount=100000; port=52424
+run_failed: WebView2 CDP 未就绪。操作超时
+```
+
+时间线：
+
+```text
+00:03:55 启动调试模式 Wuwa Tappo
+00:04:27 30 秒超时并恢复普通模式
+```
+
+恢复后的 Wuwa Tappo PID 为 25692，启动时间 `00:04:27`，没有监听端口 52424。该结果证明当前 Wuwa Tappo 1.0.3 / WebView2 156 没有将远程调试参数暴露为可用 CDP 端口。
+
+CDP Host 已增加两项诊断防护：
+
+- 重启前捕获 Wuwa WebView2 子进程树，等待旧浏览器进程真正退出；
+- 启动后检查新 WebView2 子进程命令及回环端口，8 秒内没有调试能力时提前报明确错误。
+
+但当前版本仍应把 CDP 视为实验入口，不作为日常补次数主路径。
+
+### 13.2 UIA InvokePattern 发现
+
+只读扫描当前 `.pet-dock-content`：
+
+```text
+ControlType: Group
+KeyboardFocusable: False
+Patterns:
+  InvokePattern
+  ScrollItemPattern
+```
+
+单次 `InvokePattern.Invoke()` 实测：
+
+```text
+字符数：177169 -> 177170
+增量：1
+系统鼠标移动：无
+```
+
+连续 10 次无等待调用：
+
+```text
+请求：10
+实际增长：0
+```
+
+说明页面会合并快速连续的语义调用，不能把它当作高频点击接口。
+
+### 13.3 F24 与 UIA 混合验证
+
+在同一个应用进程中：
+
+```text
+F24 10 次 -> 字符数增加 10
+UIA InvokePattern 1 次 -> 页面保持可操作
+F24 再次 10 次 -> 字符数增加 10
+```
+
+1000 个 F24 批量实测：
+
+```text
+Before: 175207
+After: 176207
+Delta: 1000
+发送调用耗时：约 2.7 秒
+系统鼠标事件：无
+```
+
+因此主 Worker 的补次数继续使用 F24 作为高速路径，UIA `InvokePattern` 只用于计数停止后的页面激活。
+
+### 13.4 新恢复策略
+
+`RunActivityBurst` 已修改：
+
+- 单批无增长等待时间从 400 ms 调整为 1200 ms；
+- 无增长时查找 `.pet-dock-content` 并调用一次 `InvokePattern`；
+- 恢复计数后继续 F24；
+- 同一批最多执行两次 UIA 恢复；
+- 两次仍无增长才写入 `needs_focus`；
+- 记录 `activity_uia_recovery` 和 `activity_uia_recovery_failed` 日志。
+
+当前已通过 C# 编译和既有回归测试；完整的 100000 次长任务及“页面停止接受 F24 后由 UIA 成功恢复”的真实场景仍需要下一次条件出现时继续验收。

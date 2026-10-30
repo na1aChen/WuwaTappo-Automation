@@ -30,6 +30,7 @@ try {
         "/reference:$(Join-Path $frameworkDirectory 'System.dll')",
         "/reference:$(Join-Path $frameworkDirectory 'System.Core.dll')",
         "/reference:$(Join-Path $frameworkDirectory 'System.Drawing.dll')",
+        "/reference:$(Join-Path $frameworkDirectory 'System.Management.dll')",
         "/reference:$(Join-Path $frameworkDirectory 'System.Windows.Forms.dll')",
         "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
         (Join-Path $projectRoot "portable\CdpHost.cs"),

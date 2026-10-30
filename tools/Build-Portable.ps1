@@ -125,10 +125,11 @@ Wuwa Tappo 自动助手 - 便携版
 - 不包含账号、密码、Cookie 或 Token。
 
 一次性 CDP 补次数：
-1. 先停止主助手后台并关闭主控制面板。
-2. 双击 WuwaTappoAutoChest-CdpHost.exe，并在 UAC 中选择“是”。
-3. 输入本次增加量后启动。程序只监听本机回环地址。
-4. 完成或取消后会自动关闭调试端口并以普通模式重启 Wuwa Tappo。
+- 日常补次数优先使用主控制面板的“一次性补次数”。
+- 当前 WebView2 构建可能不开放远程调试端口，WuwaTappoAutoChest-CdpHost.exe 仅用于兼容性测试。
+- 使用 WuwaTappoAutoChest-CdpHost.exe 前必须停止主助手后台并关闭主控制面板。
+- CDP Host 需要 UAC，并只监听本机回环地址。
+- CDP 不可用时程序会停止并恢复普通模式，不会无限等待。
 
 快捷命令：
   WuwaTappoAutoChest.exe --start-background
@@ -202,6 +203,7 @@ $cdpHostCompilerArguments = @(
     "/reference:$(Join-Path $frameworkDirectory 'System.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Core.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Drawing.dll')",
+    "/reference:$(Join-Path $frameworkDirectory 'System.Management.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Windows.Forms.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
     $cdpHostSource

@@ -6,6 +6,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Management;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -235,8 +236,18 @@ namespace WuwaTappoCdpHost
             try
             {
                 SetStatus("正在重启 Wuwa Tappo 并开启本机 CDP…");
-                RestartWuwa(executable, activePort);
+                int debugAppProcessId = RestartWuwa(executable, activePort);
                 cancellationToken.ThrowIfCancellationRequested();
+                if (!WaitForRemoteDebugStart(
+                    debugAppProcessId,
+                    activePort,
+                    TimeSpan.FromSeconds(8),
+                    cancellationToken))
+                {
+                    throw new InvalidOperationException(
+                        "WebView2 未接受远程调试参数。" +
+                        "已确认旧 WebView2 进程退出，但新进程及其子进程命令中均未出现本次调试端口。");
+                }
 
                 CdpTarget target = WaitForCdpTarget(
                     activePort,
@@ -561,13 +572,27 @@ namespace WuwaTappoCdpHost
             return port;
         }
 
-        private static void RestartWuwa(string executable, int port)
+        private static int RestartWuwa(string executable, int port)
         {
             List<Process> targets = new List<Process>();
+            List<Process> webViews = new List<Process>();
             try
             {
                 Process[] existing = Process.GetProcessesByName("WuwaTappo");
                 targets.AddRange(existing);
+                HashSet<int> webViewIds = FindDescendantProcessIds(
+                    "msedgewebview2.exe",
+                    existing.Select(process => process.Id));
+                foreach (int webViewId in webViewIds)
+                {
+                    try
+                    {
+                        webViews.Add(Process.GetProcessById(webViewId));
+                    }
+                    catch
+                    {
+                    }
+                }
                 foreach (Process process in existing)
                 {
                     try
@@ -621,6 +646,7 @@ namespace WuwaTappoCdpHost
                 }
                 if (remainingCount > 0)
                     throw new InvalidOperationException("旧 Wuwa Tappo 进程未能完全退出。");
+                WaitForWebViewExit(webViews, TimeSpan.FromSeconds(10));
 
                 ProcessStartInfo startInfo = new ProcessStartInfo();
                 startInfo.FileName = executable;
@@ -637,13 +663,206 @@ namespace WuwaTappoCdpHost
                 {
                     if (started == null)
                         throw new InvalidOperationException("无法启动 Wuwa Tappo。");
+                    return started.Id;
                 }
             }
             finally
             {
                 foreach (Process process in targets)
                     process.Dispose();
+                foreach (Process process in webViews)
+                    process.Dispose();
             }
+        }
+
+        private static void WaitForWebViewExit(
+            List<Process> webViews,
+            TimeSpan timeout)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            while (DateTime.UtcNow < deadline)
+            {
+                bool anyRunning = false;
+                foreach (Process process in webViews)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                            anyRunning = true;
+                    }
+                    catch
+                    {
+                    }
+                }
+                if (!anyRunning)
+                    return;
+                Thread.Sleep(150);
+            }
+
+            foreach (Process process in webViews)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill();
+                }
+                catch
+                {
+                }
+            }
+            DateTime killDeadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < killDeadline)
+            {
+                bool anyRunning = false;
+                foreach (Process process in webViews)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                            anyRunning = true;
+                    }
+                    catch
+                    {
+                    }
+                }
+                if (!anyRunning)
+                    return;
+                Thread.Sleep(100);
+            }
+            throw new InvalidOperationException(
+                "旧 Wuwa WebView2 子进程未能完全退出，无法安全切换调试参数。");
+        }
+
+        private static bool WaitForRemoteDebugStart(
+            int appProcessId,
+            int port,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            while (DateTime.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                List<ProcessTableEntry> processes = ReadProcessTable();
+                HashSet<int> webViewIds = FindDescendantProcessIds(
+                    processes,
+                    "msedgewebview2.exe",
+                    new[] { appProcessId });
+                if (webViewIds.Count > 0 && IsLoopbackPortListening(port))
+                    return true;
+                foreach (ProcessTableEntry entry in processes)
+                {
+                    if (webViewIds.Contains(entry.ProcessId) &&
+                        (entry.CommandLine ?? "").IndexOf(
+                            "--remote-debugging-port=" + port,
+                            StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return true;
+                    }
+                }
+                SleepWithCancellation(250, cancellationToken);
+            }
+            return false;
+        }
+
+        private static bool IsLoopbackPortListening(int port)
+        {
+            using (TcpClient client = new TcpClient())
+            {
+                try
+                {
+                    IAsyncResult result = client.BeginConnect(
+                        IPAddress.Loopback,
+                        port,
+                        null,
+                        null);
+                    if (!result.AsyncWaitHandle.WaitOne(150))
+                        return false;
+                    client.EndConnect(result);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        private static HashSet<int> FindDescendantProcessIds(
+            string childProcessName,
+            IEnumerable<int> rootProcessIds)
+        {
+            return FindDescendantProcessIds(
+                ReadProcessTable(),
+                childProcessName,
+                rootProcessIds);
+        }
+
+        private static HashSet<int> FindDescendantProcessIds(
+            List<ProcessTableEntry> processes,
+            string childProcessName,
+            IEnumerable<int> rootProcessIds)
+        {
+            HashSet<int> descendants = new HashSet<int>(rootProcessIds);
+            bool changed;
+            do
+            {
+                changed = false;
+                foreach (ProcessTableEntry entry in processes)
+                {
+                    if (descendants.Contains(entry.ParentProcessId) &&
+                        descendants.Add(entry.ProcessId))
+                    {
+                        changed = true;
+                    }
+                }
+            }
+            while (changed);
+
+            HashSet<int> matches = new HashSet<int>();
+            foreach (ProcessTableEntry entry in processes)
+            {
+                if (String.Equals(
+                        entry.Name,
+                        childProcessName,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    descendants.Contains(entry.ProcessId))
+                {
+                    matches.Add(entry.ProcessId);
+                }
+            }
+            return matches;
+        }
+
+        private static List<ProcessTableEntry> ReadProcessTable()
+        {
+            List<ProcessTableEntry> entries = new List<ProcessTableEntry>();
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                "SELECT ProcessId,ParentProcessId,Name,CommandLine FROM Win32_Process"))
+            using (ManagementObjectCollection results = searcher.Get())
+            {
+                foreach (ManagementObject item in results)
+                {
+                    using (item)
+                    {
+                        entries.Add(new ProcessTableEntry {
+                            ProcessId = Convert.ToInt32(
+                                item["ProcessId"],
+                                CultureInfo.InvariantCulture),
+                            ParentProcessId = Convert.ToInt32(
+                                item["ParentProcessId"],
+                                CultureInfo.InvariantCulture),
+                            Name = Convert.ToString(
+                                item["Name"],
+                                CultureInfo.InvariantCulture),
+                            CommandLine = Convert.ToString(
+                                item["CommandLine"],
+                                CultureInfo.InvariantCulture)
+                        });
+                    }
+                }
+            }
+            return entries;
         }
 
         private static CdpTarget WaitForCdpTarget(
@@ -860,6 +1079,14 @@ namespace WuwaTappoCdpHost
         {
             public int X;
             public int Y;
+        }
+
+        private sealed class ProcessTableEntry
+        {
+            public int ProcessId;
+            public int ParentProcessId;
+            public string Name;
+            public string CommandLine;
         }
     }
 

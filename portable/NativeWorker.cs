@@ -760,6 +760,7 @@ namespace WuwaTappoPortable
 
             int remaining = config.ActivityBurstSize;
             long? lastObserved = result.CountBefore;
+            int recoveryAttempts = 0;
             while (remaining > 0)
             {
                 if (File.Exists(stopPath))
@@ -783,12 +784,47 @@ namespace WuwaTappoPortable
                     if (!WaitForCharacterProgress(
                         target.Root,
                         lastObserved,
-                        400,
+                        1200,
                         out observedCount))
                     {
-                        result.Reason = File.Exists(stopPath)
-                            ? "stop_requested"
-                            : "input_not_counted";
+                        if (File.Exists(stopPath))
+                        {
+                            result.Reason = "stop_requested";
+                            break;
+                        }
+
+                        string recoveryError = "";
+                        if (recoveryAttempts < 2 &&
+                            TryActivatePetDock(target.Root, out recoveryError))
+                        {
+                            recoveryAttempts++;
+                            activityLastResult = "uia_recovery";
+                            Log("WARN", "activity_uia_recovery", new Dictionary<string, object> {
+                                {"attempt", recoveryAttempts},
+                                {"count", lastObserved},
+                                {"sent", result.PressesSent}
+                            });
+                            if (WaitForCharacterProgress(
+                                target.Root,
+                                lastObserved,
+                                1200,
+                                out observedCount))
+                            {
+                                lastObserved = observedCount;
+                                cachedCharacterCount = observedCount;
+                                cachedCharacterCountAt = DateTimeOffset.Now;
+                                cachedCharacterCountProcessId = target.ProcessId;
+                                continue;
+                            }
+                        }
+                        else if (!String.IsNullOrWhiteSpace(recoveryError))
+                        {
+                            Log("WARN", "activity_uia_recovery_failed", new Dictionary<string, object> {
+                                {"error", recoveryError}
+                            });
+                        }
+
+                        result.Reason = "input_not_counted";
                         break;
                     }
                     if (observedCount.HasValue)
@@ -839,6 +875,42 @@ namespace WuwaTappoPortable
                 result.Reason = "input_not_counted";
             }
             return result;
+        }
+
+        private static bool TryActivatePetDock(
+            AutomationElement root,
+            out string error)
+        {
+            error = "";
+            try
+            {
+                PropertyCondition condition = new PropertyCondition(
+                    AutomationElement.ClassNameProperty,
+                    "pet-dock-content");
+                AutomationElement dock = root.FindFirst(
+                    TreeScope.Descendants,
+                    condition);
+                if (dock == null)
+                {
+                    error = "pet_dock_not_found";
+                    return false;
+                }
+
+                InvokePattern invoke = dock.GetCurrentPattern(
+                    InvokePattern.Pattern) as InvokePattern;
+                if (invoke == null)
+                {
+                    error = "pet_dock_invoke_unavailable";
+                    return false;
+                }
+                invoke.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         private bool WaitForCharacterProgress(
