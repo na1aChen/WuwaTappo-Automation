@@ -796,10 +796,17 @@ namespace WuwaTappoPortable
                             break;
                         }
 
-                        string recoveryError = "";
-                        if (recoveryAttempts < 2 &&
-                            TryActivatePetDock(target.Root, out recoveryError))
+                        bool recovered = false;
+                        while (recoveryAttempts < 2 && !File.Exists(stopPath))
                         {
+                            string recoveryError = "";
+                            if (!TryActivatePetDock(target.Root, out recoveryError))
+                            {
+                                Log("WARN", "activity_uia_recovery_failed", new Dictionary<string, object> {
+                                    {"error", recoveryError}
+                                });
+                                break;
+                            }
                             recoveryAttempts++;
                             activityLastResult = "uia_recovery";
                             Log("WARN", "activity_uia_recovery", new Dictionary<string, object> {
@@ -810,24 +817,25 @@ namespace WuwaTappoPortable
                             if (WaitForCharacterProgress(
                                 target.Root,
                                 lastObserved,
-                                1200,
+                                2000,
                                 out observedCount))
                             {
                                 lastObserved = observedCount;
                                 cachedCharacterCount = observedCount;
                                 cachedCharacterCountAt = DateTimeOffset.Now;
                                 cachedCharacterCountProcessId = target.ProcessId;
-                                continue;
+                                recovered = true;
+                                break;
                             }
-                        }
-                        else if (!String.IsNullOrWhiteSpace(recoveryError))
-                        {
-                            Log("WARN", "activity_uia_recovery_failed", new Dictionary<string, object> {
-                                {"error", recoveryError}
-                            });
+                            if (!WaitWithStop(250))
+                                break;
                         }
 
-                        result.Reason = "input_not_counted";
+                        if (recovered)
+                            continue;
+                        result.Reason = File.Exists(stopPath)
+                            ? "stop_requested"
+                            : "input_not_counted";
                         break;
                     }
                     if (observedCount.HasValue)
