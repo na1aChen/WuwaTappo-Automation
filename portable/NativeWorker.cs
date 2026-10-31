@@ -223,6 +223,9 @@ namespace WuwaTappoPortable
         private long manualSentCount;
         private string manualError = "";
         private bool manualModeEngaged;
+        private DateTimeOffset manualRefillStartedAt;
+        private DateTimeOffset manualRefillLastProgressLogAt;
+        private long manualRefillLastLoggedSent;
 
         public NativeWorker()
         {
@@ -2083,6 +2086,22 @@ namespace WuwaTappoPortable
                 manualLastCount = JsonUtil.GetLong(request, "last_count", 0);
                 manualSentCount = JsonUtil.GetLong(request, "sent_count", 0);
                 manualError = JsonUtil.GetString(request, "error", "");
+                manualRefillStartedAt = DateTimeOffset.Now;
+                manualRefillLastProgressLogAt = DateTimeOffset.MinValue;
+                manualRefillLastLoggedSent = 0;
+                if (status == "pending")
+                {
+                    Log("INFO", "manual_refill_requested", new Dictionary<string, object> {
+                        {"request_id", requestId},
+                        {"requested_increment", manualRequestedIncrement}
+                    });
+                }
+                else if (status == "running")
+                {
+                    LogManualRefillEvent("manual_refill_started", status, manualError);
+                    manualRefillLastProgressLogAt = DateTimeOffset.Now;
+                    manualRefillLastLoggedSent = manualSentCount;
+                }
                 if (status == "pending")
                 {
                     manualBaseCount = 0;
@@ -2108,6 +2127,7 @@ namespace WuwaTappoPortable
             long sentCount,
             string error)
         {
+            string previousStatus = manualRequestStatus;
             manualRequestStatus = status;
             manualLastCount = lastCount;
             manualSentCount = sentCount;
@@ -2125,6 +2145,86 @@ namespace WuwaTappoPortable
                 {"error", manualError}
             };
             WriteJsonAtomic(refillRequestPath, request);
+
+            if (status == "running" &&
+                !String.Equals(previousStatus, "running", StringComparison.OrdinalIgnoreCase))
+            {
+                LogManualRefillEvent("manual_refill_started", status, error);
+                manualRefillLastProgressLogAt = DateTimeOffset.Now;
+                manualRefillLastLoggedSent = sentCount;
+            }
+            else if (status == "running")
+            {
+                MaybeLogManualRefillProgress();
+            }
+            else if (status == "completed" &&
+                     !String.Equals(previousStatus, status, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManualRefillEvent("manual_refill_completed", status, error);
+            }
+            else if (status == "cancelled" &&
+                     !String.Equals(previousStatus, status, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManualRefillEvent("manual_refill_cancelled", status, error);
+            }
+            else if (status == "failed" &&
+                     !String.Equals(previousStatus, status, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManualRefillEvent("manual_refill_failed", status, error);
+            }
+            else if (status == "needs_focus" &&
+                     !String.Equals(previousStatus, status, StringComparison.OrdinalIgnoreCase))
+            {
+                LogManualRefillEvent("manual_refill_needs_focus", status, error);
+            }
+        }
+
+        private void MaybeLogManualRefillProgress()
+        {
+            DateTimeOffset now = DateTimeOffset.Now;
+            if (manualRefillLastProgressLogAt != DateTimeOffset.MinValue &&
+                now - manualRefillLastProgressLogAt < TimeSpan.FromSeconds(10) &&
+                manualSentCount - manualRefillLastLoggedSent < 5000)
+            {
+                return;
+            }
+            manualRefillLastProgressLogAt = now;
+            manualRefillLastLoggedSent = manualSentCount;
+            LogManualRefillEvent("manual_refill_progress", "running", manualError);
+        }
+
+        private void LogManualRefillEvent(
+            string eventName,
+            string status,
+            string error)
+        {
+            using (Process currentProcess = Process.GetCurrentProcess())
+            {
+                double elapsedSeconds = manualRefillStartedAt == DateTimeOffset.MinValue
+                    ? 0
+                    : Math.Max(0, (DateTimeOffset.Now - manualRefillStartedAt).TotalSeconds);
+                bool warning = status == "failed" || status == "needs_focus";
+                Log(
+                    warning ? "WARN" : "INFO",
+                    eventName,
+                    new Dictionary<string, object> {
+                        {"request_id", manualRequestId},
+                        {"status", status},
+                        {"requested_increment", manualRequestedIncrement},
+                        {"base_count", manualBaseCount},
+                        {"target_count", manualTargetCount},
+                        {"last_count", manualLastCount},
+                        {"sent_count", manualSentCount},
+                        {"elapsed_seconds", Math.Round(elapsedSeconds, 1)},
+                        {"working_set_mb", Math.Round(
+                            currentProcess.WorkingSet64 / 1048576.0,
+                            1)},
+                        {"worker_cpu_seconds", Math.Round(
+                            currentProcess.TotalProcessorTime.TotalSeconds,
+                            1)},
+                        {"error", error ?? ""}
+                    });
+            }
         }
 
         private bool WaitWithStop(int milliseconds)

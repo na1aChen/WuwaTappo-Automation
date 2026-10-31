@@ -240,6 +240,15 @@ logs/autochest.jsonl
 | `chest_open_submitting` | 已写入 pending 并准备调用按钮 |
 | `chest_open_confirmed` | 按钮消失或奖励弹窗出现 |
 | `chest_open_unconfirmed` | 结果未知，已进入长冷却 |
+| `manual_refill_requested` | 收到一次性补次数请求 |
+| `manual_refill_started` | 已计算基准值和目标值并开始补足 |
+| `manual_refill_progress` | 约每 10 秒记录字符数、发送数、内存和 Worker CPU |
+| `manual_refill_completed` | 一次性补次数完成 |
+| `manual_refill_cancelled` | 取消完成 |
+| `manual_refill_failed` | 输入注入或运行异常导致失败 |
+| `manual_refill_needs_focus` | 自动恢复后仍无法增加字符数 |
+| `activity_uia_recovery` | F24 停滞后通过 UIA 重新激活页面 |
+| `activity_uia_recovery_failed` | UIA 恢复调用失败 |
 | `scan_error` | UI Automation 或环境异常 |
 | `worker_stopped` | 工作进程退出 |
 

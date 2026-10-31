@@ -841,3 +841,107 @@ needs_focus：未出现
 本次 F24 从约 4 万到 10 万完整跑完，没有复现此前“无干预只完成一半”的问题。22 个字符的最终偏差来自运行期间 UI 数值刷新与批次边界，不是宝箱重复提交。
 
 由于本次没有出现 F24 停摆，UIA 恢复分支没有在真实长任务中触发；该分支的单次 `InvokePattern` 已单独验证可增加 1 个字符。下一次出现 `input_not_counted` 时应检查 `activity_uia_recovery` 日志。
+
+## 14. 2026-10-31 200000 次任务系统卡顿排查与操作日志
+
+### 14.1 故障现象
+
+用户提交约 200000 次补足，在约 120000 次时系统严重卡顿，任务管理器难以加载，随后直接关闭应用。
+
+当时实际运行的是旧目录：
+
+```text
+dist\WuwaTappoAutoChest-Portable\WuwaTappoAutoChest.exe
+```
+
+不是已经带有 UIA 恢复和 1.2 秒等待的 Hybrid 包。
+
+### 14.2 Windows 取证
+
+Windows Application Hang：
+
+```text
+时间：2026-10-31 14:31:24
+程序：WuwaTappoAutoChest.exe
+事件：AppHangB1
+界面提示：Wuwa Tappo AutoChest 未响应
+```
+
+随后旧 Worker：
+
+```text
+14:32:43 worker_stopped
+14:32:45 新 Worker 启动
+```
+
+检查结果：
+
+- 没有找到资源耗尽、低内存或系统内存不足事件；
+- WER 报告系统内存约 16 GB；
+- Worker 当时不是崩溃退出，而是随用户关闭应用后停止；
+- 旧版日志没有 manual refill 阶段事件；
+- 15:34 前后的请求文件只保留了一次已完成的 50000 请求，200000 请求状态已被覆盖，无法还原。
+
+结论：现有证据不支持“内存耗尽”。更符合证据的原因是长时间 F24 全局输入、500 键快速批次和 5 ms UIA 轮询共同造成输入队列/CPU/消息泵压力，最终使控制面板超过 Windows 无响应阈值。旧版没有足够日志，不能进一步精确定位到单次调用。
+
+### 14.3 最小改动：补次数操作日志
+
+继续使用现有 `runtime/logs/autochest.jsonl`，不新增日志体系：
+
+```text
+manual_refill_requested
+manual_refill_started
+manual_refill_progress
+manual_refill_completed
+manual_refill_cancelled
+manual_refill_failed
+manual_refill_needs_focus
+```
+
+进度日志最多约每 10 秒或每新增 5000 次发送记录一次，内容包括：
+
+```text
+request_id
+requested_increment
+base_count
+target_count
+last_count
+sent_count
+elapsed_seconds
+working_set_mb
+worker_cpu_seconds
+error
+```
+
+不记录每次按键，不记录账号、Cookie、Token 或请求头。
+
+### 14.4 日志实测
+
+1000 次：
+
+```text
+manual_refill_requested
+manual_refill_started
+manual_refill_completed
+```
+
+5000 次：
+
+```text
+18:56:15 manual_refill_requested
+18:56:15 manual_refill_started
+18:56:24 manual_refill_progress
+          last_count=525474
+          sent_count=5000
+          elapsed_seconds=9.2
+          working_set_mb=40.8
+          worker_cpu_seconds=1.6
+18:56:24 manual_refill_completed
+          last_count=525519
+          sent_count=5001
+          elapsed_seconds=9.4
+          working_set_mb=40.8
+          worker_cpu_seconds=1.7
+```
+
+日志功能通过实际端到端补次数验证。下一次 200000 次任务应使用 Hybrid 包；即使再次卡顿，也能从最后一条 `manual_refill_progress` 判断最后字符数、发送数量、Worker 内存和 CPU。
