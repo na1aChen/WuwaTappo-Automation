@@ -90,6 +90,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "docs\atlas-gallery.md") -Destina
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\portable.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\investigation.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\design.md") -Destination $runtimeDocs
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs\native-count-refill-design.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\test-results.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot ".env.example") -Destination $runtimeDirectory
 

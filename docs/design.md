@@ -503,7 +503,7 @@ Stopped
 
 - Host 以 `requireAdministrator` 清单启动，只处理用户桌面上明确触发的 UAC；
 - 每次运行随机分配空闲 TCP 端口；
-- `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 明确限制为 `127.0.0.1`；
+- 实测仅设置 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 不会让当前桌宠开放端口；后续实现必须使用宿主参数 `--edge-webview-switches`，并限制为 `127.0.0.1`；
 - 只接受 WebSocket URL 主机为 `localhost` 或回环 IP，且端口与本次随机端口一致；
 - 只选择 `tauri.localhost` 页面目标；
 - 使用原生 `ClientWebSocket`，不依赖 Node、Playwright、Selenium 或浏览器驱动；
@@ -555,3 +555,11 @@ CDP 事件直接进入该 WebView 页面，不产生 Windows 系统级鼠标移�
 - Wuwa Tappo 更新后 DOM 或输入策略是否变化。
 
 未完成上述目标桌面验证前，不得宣称 CDP 运行时路径已经通过。
+
+### 18.7 页面原生计数设计
+
+GitHub 现有实现表明，比页面坐标点击更有价值的是直接调用桌宠页面的计数 store 和强制保存函数。该方案尚未实现，完整设计、GitHub 对照、安全边界、批次大小和测试阶梯见：
+
+```text
+docs/native-count-refill-design.md
+```

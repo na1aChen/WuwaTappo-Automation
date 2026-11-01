@@ -175,6 +175,7 @@ Tauri 2.10.3 + WebView2 155.0.4283.62
 | `automation.dryRun` | `false` | 配置级只读模式 |
 | `activity.enabled` | `false` | 是否启用旧的持续自动计数；一次性补次数不受此开关限制 |
 | `activity.virtualKey` | `135` | 注入的 Windows 虚拟键，135 为 F24 |
+| `activity.keyMode` | `chord` | `single` 仅用 virtualKey，`chord` 同时按 F21–F24，`cycle` 依次循环 |
 | `activity.intervalMilliseconds` | `0` | 每键附加等待；0 表示按系统吞吐执行 |
 | `activity.burstSize` | `1000` | 每轮目标上限，内部按 500 键合并并动态校验计数 |
 | `activity.characterThreshold` | `10000` | 自动补足到该字符数后暂停活动注入 |
@@ -358,6 +359,7 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 config/                         配置示例与当前本机配置
 docs/investigation.md           调查结论
 docs/design.md                  设计方案
+docs/native-count-refill-design.md 页面原生计数补次数设计（尚未实现）
 docs/test-results.md            实际测试记录
 docs/atlas-gallery.md           离线全图鉴使用说明
 docs/portable.md                便携版与 EXE 使用说明

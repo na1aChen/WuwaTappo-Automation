@@ -22,6 +22,7 @@
   "activity": {
     "enabled": false,
     "virtualKey": 135,
+    "keyMode": "chord",
     "intervalMilliseconds": 0,
     "burstSize": 1000,
     "characterThreshold": 10000

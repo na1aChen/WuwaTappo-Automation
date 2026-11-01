@@ -32,6 +32,7 @@ namespace WuwaTappoPortable
         public double MaxRuntimeMinutes;
         public bool ActivityEnabled;
         public int ActivityVirtualKey = 0x87;
+        public string ActivityKeyMode = "single";
         public int ActivityIntervalMilliseconds;
         public int ActivityBurstSize = 1000;
         public long CharacterThreshold = 10000;
@@ -65,6 +66,14 @@ namespace WuwaTappoPortable
             config.MaxRuntimeMinutes = JsonUtil.GetDouble(automation, "maxRuntimeMinutes", config.MaxRuntimeMinutes);
             config.ActivityEnabled = JsonUtil.GetBool(activity, "enabled", config.ActivityEnabled);
             config.ActivityVirtualKey = JsonUtil.GetInt(activity, "virtualKey", config.ActivityVirtualKey);
+            config.ActivityKeyMode = JsonUtil.GetString(
+                activity,
+                "keyMode",
+                config.ActivityKeyMode).Trim().ToLowerInvariant();
+            if (config.ActivityKeyMode != "single" &&
+                config.ActivityKeyMode != "chord" &&
+                config.ActivityKeyMode != "cycle")
+                config.ActivityKeyMode = "single";
             config.ActivityIntervalMilliseconds = Math.Max(0, JsonUtil.GetInt(activity, "intervalMilliseconds", config.ActivityIntervalMilliseconds));
             config.ActivityBurstSize = Math.Max(1, JsonUtil.GetInt(activity, "burstSize", config.ActivityBurstSize));
             config.CharacterThreshold = Math.Max(1, JsonUtil.GetLong(activity, "characterThreshold", config.CharacterThreshold));
@@ -180,6 +189,7 @@ namespace WuwaTappoPortable
 
     internal sealed class NativeWorker
     {
+        private static readonly byte[] PhantomKeys = { 0x84, 0x85, 0x86, 0x87 };
         private NativeWorkerConfig config;
         private readonly string runtimeDirectory;
         private readonly string stateDirectory;
@@ -274,6 +284,7 @@ namespace WuwaTappoPortable
                 RestoreOperationState();
                 Log("INFO", "worker_started", new Dictionary<string, object> {
                     {"activity_enabled", activityEnabled},
+                    {"activity_key_mode", config.ActivityKeyMode},
                     {"config_path", configPath},
                     {"runtime", "native-csharp"}
                 });
@@ -779,10 +790,28 @@ namespace WuwaTappoPortable
                 }
                 try
                 {
-                    NativeInput.SendKeys((byte)config.ActivityVirtualKey, batchSize);
-                    result.PressesSent += batchSize;
-                    activityKeysSent += batchSize;
-                    remaining -= batchSize;
+                    int dispatched;
+                    if (config.ActivityKeyMode == "chord" && batchSize >= 4)
+                    {
+                        int chordCount = batchSize / 4;
+                        NativeInput.SendChord(PhantomKeys, chordCount);
+                        dispatched = chordCount * 4;
+                    }
+                    else if (config.ActivityKeyMode == "cycle")
+                    {
+                        NativeInput.SendKeyCycle(PhantomKeys, batchSize);
+                        dispatched = batchSize;
+                    }
+                    else
+                    {
+                        NativeInput.SendKeys(
+                            (byte)config.ActivityVirtualKey,
+                            batchSize);
+                        dispatched = batchSize;
+                    }
+                    result.PressesSent += dispatched;
+                    activityKeysSent += dispatched;
+                    remaining -= dispatched;
                     long? observedCount;
                     if (!WaitForCharacterProgress(
                         target.Root,
@@ -1504,6 +1533,7 @@ namespace WuwaTappoPortable
                 {"buttons", buttons},
                 {"character_count", characterCount},
                 {"activity_enabled", activityEnabled},
+                {"activity_key_mode", config.ActivityKeyMode},
                 {"activity_keys_sent", activityKeysSent},
                 {"activity_last_result", activityLastResult},
                 {"manual_refill_status", manualRequestStatus},
@@ -2375,6 +2405,62 @@ namespace WuwaTappoPortable
                 inputs[offset + 1].type = INPUT_KEYBOARD;
                 inputs[offset + 1].u.ki.wVk = virtualKey;
                 inputs[offset + 1].u.ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            uint sent = SendInput(
+                (uint)inputs.Length,
+                inputs,
+                Marshal.SizeOf(typeof(INPUT)));
+            if (sent != inputs.Length)
+                throw new InvalidOperationException("SendInput failed: " + Marshal.GetLastWin32Error());
+        }
+
+        public static void SendKeyCycle(byte[] virtualKeys, int count)
+        {
+            if (virtualKeys == null || virtualKeys.Length == 0)
+                throw new ArgumentException("虚拟键列表不能为空。", "virtualKeys");
+            int keyCount = Math.Max(1, count);
+            INPUT[] inputs = new INPUT[keyCount * 2];
+            for (int index = 0; index < keyCount; index++)
+            {
+                byte virtualKey = virtualKeys[index % virtualKeys.Length];
+                int offset = index * 2;
+                inputs[offset].type = INPUT_KEYBOARD;
+                inputs[offset].u.ki.wVk = virtualKey;
+                inputs[offset + 1].type = INPUT_KEYBOARD;
+                inputs[offset + 1].u.ki.wVk = virtualKey;
+                inputs[offset + 1].u.ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            uint sent = SendInput(
+                (uint)inputs.Length,
+                inputs,
+                Marshal.SizeOf(typeof(INPUT)));
+            if (sent != inputs.Length)
+                throw new InvalidOperationException("SendInput failed: " + Marshal.GetLastWin32Error());
+        }
+
+        public static void SendChord(byte[] virtualKeys, int chordCount)
+        {
+            if (virtualKeys == null || virtualKeys.Length == 0)
+                throw new ArgumentException("虚拟键列表不能为空。", "virtualKeys");
+            int count = Math.Max(1, chordCount);
+            int inputsPerChord = virtualKeys.Length * 2;
+            INPUT[] inputs = new INPUT[count * inputsPerChord];
+            int offset = 0;
+            for (int chord = 0; chord < count; chord++)
+            {
+                for (int key = 0; key < virtualKeys.Length; key++)
+                {
+                    inputs[offset].type = INPUT_KEYBOARD;
+                    inputs[offset].u.ki.wVk = virtualKeys[key];
+                    offset++;
+                }
+                for (int key = 0; key < virtualKeys.Length; key++)
+                {
+                    inputs[offset].type = INPUT_KEYBOARD;
+                    inputs[offset].u.ki.wVk = virtualKeys[key];
+                    inputs[offset].u.ki.dwFlags = KEYEVENTF_KEYUP;
+                    offset++;
+                }
             }
             uint sent = SendInput(
                 (uint)inputs.Length,
