@@ -1081,3 +1081,89 @@ Worker 内存：40.3 MB
 ```
 
 并发模式已完成编译和端到端验证。完整 20 万次稳定性仍需单独测试，不能仅凭 1000 次结果推断。
+
+## 17. 2026-11-14 Wuwa Tappo 1.0.4 页面原生补数
+
+### 17.1 环境
+
+```text
+Windows 11 专业版 10.0.26100
+Wuwa Tappo 1.0.4
+WebView2 157.0.4341.46
+测试包：dist/WuwaTappoAutoChest-NativeCompile
+```
+
+本轮没有调用、伪造或重放服务器补数写接口。调查发现页面 store 同时存在 `serverClickTotal` 和 `serverClickConsume`，因此不能把应用视为完全离线程序。HTTP 写入没有被纳入交付功能。
+
+### 17.2 页面能力发现
+
+通过 Wuwa Tappo 宿主参数开放随机 `127.0.0.1` 调试端口后，`discover.js` 返回：
+
+```json
+{
+  "ok": true,
+  "commonPath": "/assets/index-CM6qA69G.js",
+  "clickPath": "/assets/index-CM6qA69G.js",
+  "storeKey": "E",
+  "saveKey": "bh",
+  "countMode": "increment"
+}
+```
+
+键名是 1.0.4 当前构建的实际值，发布脚本仍通过资源扫描动态发现，不把上述键名硬编码为主流程。
+
+### 17.3 1000 次
+
+命令：
+
+```powershell
+WuwaTappoAutoChest-CdpHost.exe --native-refill 1000
+```
+
+日志回执：
+
+```text
+available=550407
+cumulative=1444407
+target=551407
+mode=increment
+
+available=551407
+cumulative=1445407
+confirmed=1000
+```
+
+实际增加耗时约 0.58 秒。Host 正常退出，Wuwa Tappo 随后以普通模式重新启动。
+
+### 17.4 5000 次
+
+```text
+起始：available=551407, cumulative=1445407
+最终：available=556407, cumulative=1450407
+批次：5 × 1000
+实际增加耗时：约 2.86 秒
+结果：通过
+```
+
+### 17.5 50000 次
+
+```text
+起始：available=556407, cumulative=1450407
+最终：available=606407, cumulative=1500407
+批次：50 × 1000
+实际增加耗时：约 26.12 秒
+Host 工作集：约 45.7 MB
+Host CPU 累计：约 0.47 秒
+结果：通过
+```
+
+每批最终值均与目标精确一致，没有出现旧页面状态覆盖或部分批次丢失。Host 正常退出后，调试端口关闭，Wuwa Tappo 以无调试参数的新进程重新启动。
+
+### 17.6 未执行项
+
+- 200000 次原生补数；
+- 新增过程中用户主动取消；
+- Host 被任务管理器强制结束后的手工恢复；
+- Wuwa Tappo 后续版本更新后的重新发现。
+
+这些项目未执行，因此不标记为通过。

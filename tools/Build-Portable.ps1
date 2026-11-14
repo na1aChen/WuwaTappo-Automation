@@ -40,11 +40,14 @@ $runtimeDirectory = Join-Path $OutputDirectory "runtime"
 $runtimeState = Join-Path $runtimeDirectory "state"
 $runtimeLogs = Join-Path $runtimeDirectory "logs"
 $runtimeConfig = Join-Path $runtimeDirectory "config"
+$runtimeNative = Join-Path $runtimeDirectory "native"
 New-Item -ItemType Directory -Path $runtimeState -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeLogs -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeConfig -Force | Out-Null
+New-Item -ItemType Directory -Path $runtimeNative -Force | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $projectRoot "gallery") -Destination $runtimeDirectory -Recurse
+Copy-Item -Path (Join-Path $projectRoot "portable\native\*") -Destination $runtimeNative -Force
 $catalogPath = Join-Path $projectRoot "gallery\catalog.json"
 $catalog = Get-Content -LiteralPath $catalogPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $imageHashes = [ordered]@{}
@@ -92,6 +95,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "docs\investigation.md") -Destina
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\design.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\native-count-refill-design.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\test-results.md") -Destination $runtimeDocs
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs\third-party-notices.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot ".env.example") -Destination $runtimeDirectory
 
 $portableConfig = Get-Content -LiteralPath (Join-Path $projectRoot "config\autochest.json") -Raw -Encoding UTF8 |
@@ -125,12 +129,21 @@ Wuwa Tappo 自动助手 - 便携版
 - 不修改 Wuwa Tappo 安装目录。
 - 不包含账号、密码、Cookie 或 Token。
 
-一次性 CDP 补次数：
-- 日常补次数优先使用主控制面板的“一次性补次数”。
-- 当前 WebView2 构建可能不开放远程调试端口，WuwaTappoAutoChest-CdpHost.exe 仅用于兼容性测试。
-- 使用 WuwaTappoAutoChest-CdpHost.exe 前必须停止主助手后台并关闭主控制面板。
-- CDP Host 需要 UAC，并只监听本机回环地址。
-- CDP 不可用时程序会停止并恢复普通模式，不会无限等待。
+页面原生一次性补次数：
+- 大批量补次数使用 WuwaTappoAutoChest-CdpHost.exe。
+- 运行前必须停止主助手后台并关闭主控制面板。
+- Host 会短暂重启 Wuwa Tappo，只开放随机 127.0.0.1 调试端口。
+- Host 动态发现当前页面已有的计数与保存函数，不读取 Cookie、Token 或账号原值。
+- 每 1000 次保存并核对一次；失败时停止，不自动重放结果未知的批次。
+- 完成后 Host 自动退出，Wuwa Tappo 以普通模式重新启动。
+
+图形界面：
+  双击 WuwaTappoAutoChest-CdpHost.exe，输入增加量。
+
+命令行：
+  WuwaTappoAutoChest-CdpHost.exe --native-refill 50000
+
+首次建议先测试 1000。UAC 只用于本次 Host 的重启与回环调试。
 
 快捷命令：
   WuwaTappoAutoChest.exe --start-background
@@ -192,6 +205,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exePath -PathType Leaf
 
 $cdpHostExePath = Join-Path $OutputDirectory "WuwaTappoAutoChest-CdpHost.exe"
 $cdpHostSource = Join-Path $projectRoot "portable\CdpHost.cs"
+$nativeRefillSource = Join-Path $projectRoot "portable\NativePageRefill.cs"
 $cdpHostManifest = Join-Path $projectRoot "portable\cdp-host.manifest"
 $cdpHostCompilerArguments = @(
     "/nologo",
@@ -207,7 +221,8 @@ $cdpHostCompilerArguments = @(
     "/reference:$(Join-Path $frameworkDirectory 'System.Management.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Windows.Forms.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
-    $cdpHostSource
+    $cdpHostSource,
+    $nativeRefillSource
 )
 
 & $csc @cdpHostCompilerArguments

@@ -27,10 +27,48 @@ namespace WuwaTappoCdpHost
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            if (args != null && args.Length >= 2 &&
+                String.Equals(args[0], "--native-refill", StringComparison.OrdinalIgnoreCase))
+            {
+                int amount;
+                if (!Int32.TryParse(args[1], out amount) ||
+                    amount < 1000 || amount > 1000000)
+                {
+                    Environment.ExitCode = 2;
+                    return;
+                }
+                CdpHostForm form = new CdpHostForm();
+                try
+                {
+                    SynchronizationContext.SetSynchronizationContext(null);
+                    form.RunRefill(amount, CancellationToken.None);
+                    Environment.ExitCode = 0;
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        string logDirectory = Path.Combine(
+                            AppDomain.CurrentDomain.BaseDirectory,
+                            "runtime",
+                            "logs");
+                        Directory.CreateDirectory(logDirectory);
+                        File.WriteAllText(
+                            Path.Combine(logDirectory, "cdp-host-cli-error.txt"),
+                            ex.ToString(),
+                            new UTF8Encoding(false));
+                    }
+                    catch
+                    {
+                    }
+                    Environment.ExitCode = 1;
+                }
+                return;
+            }
             Application.Run(new CdpHostForm());
         }
     }
@@ -49,7 +87,7 @@ namespace WuwaTappoCdpHost
 
         public CdpHostForm()
         {
-            Text = "Wuwa Tappo CDP Host";
+            Text = "Wuwa Tappo 原生计数 Host";
             ClientSize = new Size(560, 220);
             MinimumSize = new Size(560, 220);
             StartPosition = FormStartPosition.CenterScreen;
@@ -58,7 +96,7 @@ namespace WuwaTappoCdpHost
             Font = new Font("Segoe UI", 9f);
 
             Label title = new Label();
-            title.Text = "WebView2 CDP 一次性补次数";
+            title.Text = "页面原生计数一次性补次数";
             title.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
             title.AutoSize = true;
             title.Location = new Point(22, 18);
@@ -71,7 +109,7 @@ namespace WuwaTappoCdpHost
             Controls.Add(amountLabel);
 
             amountBox = new TextBox();
-            amountBox.Text = "100000";
+            amountBox.Text = "1000";
             amountBox.Location = new Point(95, 63);
             amountBox.Width = 130;
             amountBox.TextAlign = HorizontalAlignment.Right;
@@ -80,7 +118,7 @@ namespace WuwaTappoCdpHost
             Controls.Add(amountBox);
 
             startButton = new Button();
-            startButton.Text = "启动 CDP 并补足";
+            startButton.Text = "启动原生补足";
             startButton.Location = new Point(245, 60);
             startButton.Size = new Size(150, 30);
             startButton.Click += delegate { StartRefill(); };
@@ -105,7 +143,7 @@ namespace WuwaTappoCdpHost
             warningLabel = new Label();
             warningLabel.Text =
                 "需要一次性 UAC。仅连接 127.0.0.1 随机端口，不读取 Cookie 或 Token。\r\n" +
-                "运行前请先停止自动助手后台，并保留 Wuwa Tappo 登录状态。";
+                "运行前请先停止自动助手后台。首次测试请保持 1000 次。";
             warningLabel.ForeColor = Color.FromArgb(165, 174, 185);
             warningLabel.Location = new Point(22, 140);
             warningLabel.Size = new Size(510, 50);
@@ -220,7 +258,7 @@ namespace WuwaTappoCdpHost
             }
         }
 
-        private string RunRefill(int amount, CancellationToken cancellationToken)
+        internal string RunRefill(int amount, CancellationToken cancellationToken)
         {
             EnsureMainAutomationIsStopped();
             string executable = FindWuwaExecutable();
@@ -258,114 +296,89 @@ namespace WuwaTappoCdpHost
                     client.ConnectAsync(target.WebSocketDebuggerUrl, cancellationToken)
                         .GetAwaiter()
                         .GetResult();
-                    SetStatus("CDP 已连接，等待页面加载…");
-
-                    long startCount = WaitForCharacterCount(
+                    SetStatus("CDP 已连接，正在发现页面原生计数能力…");
+                    NativePageProfile profile = WaitForNativeProfile(
                         client,
                         TimeSpan.FromSeconds(30),
                         cancellationToken);
-                    ClickPoint clickPoint = ReadClickPoint(client);
-                    long targetCount = startCount + amount;
+                    if (profile.CountMode != "increment")
+                    {
+                        throw new InvalidOperationException(
+                            "当前页面使用非增量计数入口，原生 Host 暂不支持该版本。");
+                    }
+
+                    NativePageSnapshot start = WaitForNativeSnapshot(
+                        client,
+                        profile,
+                        TimeSpan.FromSeconds(30),
+                        cancellationToken);
+                    long targetCount = start.Available + amount;
                     SetStatus(String.Format(
-                        "开始：{0:N0} → {1:N0}",
-                        startCount,
+                        "原生计数开始：{0:N0} → {1:N0}",
+                        start.Available,
                         targetCount));
+                    WriteLog(
+                        "native_refill_started",
+                        String.Format(
+                            "available={0}; cumulative={1}; target={2}; mode={3}",
+                            start.Available,
+                            start.Cumulative,
+                            targetCount,
+                            profile.CountMode));
 
-                    long current = startCount;
+                    NativePageSnapshot current = start;
                     int sent = 0;
-                    int batchSize = 200;
-                    int stalledBatches = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    DateTime nextProgressUpdate = DateTime.UtcNow;
 
-                    while (current < targetCount)
+                    while (current.Available < targetCount)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        long requestedDelta = targetCount - startCount;
-                        long remainingQuota = requestedDelta - sent;
-                        if (remainingQuota <= 0)
-                        {
-                            current = WaitForCountChange(
-                                client,
-                                current,
-                                TimeSpan.FromSeconds(5),
-                                cancellationToken);
-                            if (current < startCount + sent)
-                            {
-                                throw new InvalidOperationException(
-                                    "本批点击已全部发送，但页面字符数未达到目标。" +
-                                    "当前版本可能丢弃了部分页面输入。");
-                            }
-                            continue;
-                        }
-
+                        long remaining = targetCount - current.Available;
                         int batch = (int)Math.Min(
-                            (long)batchSize,
-                            Math.Max(1L, remainingQuota));
-                        long before = current;
-                        client.DispatchClicksAsync(
-                                batch,
-                                clickPoint.X,
-                                clickPoint.Y,
-                                cancellationToken)
-                            .GetAwaiter()
-                            .GetResult();
-                        client.WaitForRenderingAsync(cancellationToken)
-                            .GetAwaiter()
-                            .GetResult();
-                        sent += batch;
-                        current = WaitForCountChange(
+                            1000L,
+                            Math.Max(1L, remaining));
+                        NativePageBatchResult result = NativePageRefill.Boost(
                             client,
-                            before,
-                            TimeSpan.FromSeconds(2.5),
+                            profile,
+                            current,
+                            batch,
                             cancellationToken);
-
-                        long delta = current - before;
-                        if (delta <= 0)
+                        if (!result.Ok || result.After == null)
                         {
-                            stalledBatches++;
-                            batchSize = Math.Max(10, batchSize / 2);
-                            SetStatus(String.Format(
-                                "页面字符数未增长，正在降低批次重试（{0}/2）…",
-                                stalledBatches));
-                            if (stalledBatches >= 2)
-                            {
-                                throw new InvalidOperationException(
-                                    "CDP 点击已发送，但页面字符数没有增长。" +
-                                    "当前版本可能不响应 CDP 输入，或页面仍在加载/已退出登录。");
-                            }
-                            continue;
+                            throw new InvalidOperationException(
+                                "页面原生计数未确认：" +
+                                (String.IsNullOrWhiteSpace(result.Error)
+                                    ? "unknown"
+                                    : result.Error));
                         }
 
-                        stalledBatches = 0;
-                        if (delta >= Math.Max(1, (long)(batch * 0.9)))
-                        {
-                            batchSize = Math.Min(500, batchSize * 2);
-                        }
-                        else if (delta < Math.Max(1, (long)(batch * 0.4)))
-                        {
-                            batchSize = Math.Max(25, batchSize / 2);
-                        }
-
-                        if (DateTime.UtcNow >= nextProgressUpdate)
-                        {
-                            SetStatus(String.Format(
-                                "进度 {0:N0} / {1:N0}  ·  已点击 {2:N0}  ·  {3:N0}/秒",
-                                current,
-                                targetCount,
-                                sent,
-                                stopwatch.Elapsed.TotalSeconds > 0
-                                    ? (long)(current - startCount) /
-                                      Math.Max(1L, (long)stopwatch.Elapsed.TotalSeconds)
-                                    : 0));
-                            nextProgressUpdate = DateTime.UtcNow.AddMilliseconds(200);
-                        }
+                        current = result.After;
+                        sent += batch;
+                        long rate = stopwatch.Elapsed.TotalSeconds > 0
+                            ? (long)((current.Available - start.Available) /
+                                     Math.Max(1L, (long)stopwatch.Elapsed.TotalSeconds))
+                            : 0;
+                        SetStatus(String.Format(
+                            "原生进度 {0:N0} / {1:N0}  ·  已确认 {2:N0}  ·  {3:N0}/秒",
+                            current.Available,
+                            targetCount,
+                            sent,
+                            rate));
+                        WriteLog(
+                            "native_refill_progress",
+                            String.Format(
+                                "available={0}; cumulative={1}; local={2}; consumed={3}; confirmed={4}",
+                                current.Available,
+                                current.Cumulative,
+                                current.Local,
+                                current.Consumed,
+                                sent));
                     }
 
                     finalStatus = String.Format(
-                        "完成：{0:N0} → {1:N0}，共点击 {2:N0}",
-                        startCount,
-                        current,
+                        "原生计数完成：{0:N0} → {1:N0}，共确认 {2:N0}",
+                        start.Available,
+                        current.Available,
                         sent);
                 }
             }
@@ -655,9 +668,11 @@ namespace WuwaTappoCdpHost
                 startInfo.EnvironmentVariables.Remove("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS");
                 if (port > 0)
                 {
-                    startInfo.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] =
+                    startInfo.Arguments =
+                        "--edge-webview-switches=\"" +
+                        "--remote-debugging-address=127.0.0.1 " +
                         "--remote-debugging-port=" + port +
-                        " --remote-debugging-address=127.0.0.1";
+                        "\"";
                 }
                 using (Process started = Process.Start(startInfo))
                 {
@@ -865,6 +880,60 @@ namespace WuwaTappoCdpHost
             return entries;
         }
 
+        private static NativePageProfile WaitForNativeProfile(
+            CdpClient client,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            Exception last = null;
+            while (DateTime.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    return NativePageRefill.Discover(client, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                }
+                SleepWithCancellation(400, cancellationToken);
+            }
+            throw new InvalidOperationException(
+                "页面原生计数能力未就绪。" +
+                (last == null ? "" : " " + last.Message));
+        }
+
+        private static NativePageSnapshot WaitForNativeSnapshot(
+            CdpClient client,
+            NativePageProfile profile,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            Exception last = null;
+            while (DateTime.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    return NativePageRefill.ReadSnapshot(
+                        client,
+                        profile,
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                }
+                SleepWithCancellation(400, cancellationToken);
+            }
+            throw new InvalidOperationException(
+                "页面登录或计数状态未就绪。" +
+                (last == null ? "" : " " + last.Message));
+        }
+
         private static CdpTarget WaitForCdpTarget(
             int port,
             TimeSpan timeout,
@@ -893,9 +962,7 @@ namespace WuwaTappoCdpHost
                             string socket = GetString(values, "webSocketDebuggerUrl");
                             if (type != "page" ||
                                 String.IsNullOrWhiteSpace(socket) ||
-                                url.IndexOf(
-                                    "tauri.localhost",
-                                    StringComparison.OrdinalIgnoreCase) < 0 ||
+                                !IsTauriMainPage(url) ||
                                 !IsLoopbackWebSocket(socket, port))
                                 continue;
                             return new CdpTarget {
@@ -943,6 +1010,23 @@ namespace WuwaTappoCdpHost
             string host = uri.Host.Trim('[', ']');
             IPAddress address;
             return IPAddress.TryParse(host, out address) && IPAddress.IsLoopback(address);
+        }
+
+        private static bool IsTauriMainPage(string value)
+        {
+            Uri uri;
+            if (!Uri.TryCreate(value, UriKind.Absolute, out uri) ||
+                !String.Equals(
+                    uri.Host,
+                    "tauri.localhost",
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+            string path = uri.AbsolutePath;
+            if (path != "/" &&
+                !String.Equals(path, "/index.html", StringComparison.OrdinalIgnoreCase))
+                return false;
+            string fragment = uri.Fragment ?? "";
+            return fragment.Length == 0 || fragment == "#" || fragment == "#/";
         }
 
         private static long WaitForCharacterCount(
@@ -1129,6 +1213,13 @@ namespace WuwaTappoCdpHost
             return EvaluateAsync(expression, false, cancellationToken);
         }
 
+        public Task<Dictionary<string, object>> EvaluateAwaitAsync(
+            string expression,
+            CancellationToken cancellationToken)
+        {
+            return EvaluateAsync(expression, true, cancellationToken);
+        }
+
         private Task<Dictionary<string, object>> EvaluateAsync(
             string expression,
             bool awaitPromise,
@@ -1263,7 +1354,7 @@ namespace WuwaTappoCdpHost
                 using (CancellationTokenSource timeout =
                     CancellationTokenSource.CreateLinkedTokenSource(linked.Token))
                 {
-                    timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                    timeout.CancelAfter(TimeSpan.FromSeconds(45));
                     Task timeoutTask = Task.Delay(Timeout.Infinite, timeout.Token);
                     Task completed = await Task.WhenAny(allResponses, timeoutTask);
                     if (completed != allResponses)

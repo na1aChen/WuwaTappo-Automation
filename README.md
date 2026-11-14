@@ -2,7 +2,7 @@
 
 这是一个 Windows 后台辅助程序，用于自动发现并开启 Wuwa Tappo 自身界面中已经可用的宝箱。
 
-程序通过限速 `F24` 键输入走 Wuwa Tappo 自身的正常计数机制，自动累积字符数和活跃时间；它不会直接修改存档、计数或宝箱计时，也不会直接访问内部 HTTP API 或读取登录凭据。为显示真实奖励名称，Worker 只读取在线版 WebView2 的本地奖励资产 ID 与图片缓存，不输出 Cookie、Token 或请求头。登录、验证码和 30 分钟宝箱生成规则仍由 Wuwa Tappo 自己处理。
+常驻 Worker 通过 `F24` 键输入走 Wuwa Tappo 自身的正常计数机制，自动累积字符数和活跃时间，不会直接访问内部 HTTP API 或读取登录凭据。新原生测试包另带一个显式的一次性 Host：它通过仅限 `127.0.0.1` 的 WebView2 CDP 动态发现并调用当前页面自己的增量计数和保存函数，避免持续写入 Windows 全局键鼠队列。两者都不伪造服务器写请求；登录、验证码和 30 分钟宝箱生成规则仍由 Wuwa Tappo 自己处理。
 
 ## 功能
 
@@ -43,11 +43,11 @@ gallery/index.html
 
 ## Windows 便携版
 
-已生成可直接打包发送给朋友的便携版本：
+最新原生测试包可直接打包发送给朋友，且不覆盖原 Hybrid：
 
 ```text
-dist/WuwaTappoAutoChest-Portable/
-dist/WuwaTappoAutoChest-Portable.zip
+dist/WuwaTappoAutoChest-Portable-Native/
+dist/WuwaTappoAutoChest-Portable-Native.zip
 ```
 
 朋友解压后启动并登录 Wuwa Tappo，再双击：
@@ -64,9 +64,9 @@ WuwaTappoAutoChest.exe
 
 控制面板采用 Codex 风格深色界面，状态区和历史记录区为纯黑背景，指标卡和按钮使用响应式流式布局，支持窗口缩放和 DPI 缩放。最小推荐尺寸为 740 × 780。
 
-### 一次性 WebView2 CDP 补次数
+### 页面原生一次性补次数
 
-当前 Wuwa Tappo 1.0.3 / WebView2 156 实测未开放远程调试端口，因此 CDP 入口仅作为实验和兼容性诊断功能，不推荐作为日常补次数路径。日常一次性补足请使用主控制面板中的“一次性补次数”。
+当前 Wuwa Tappo 1.0.4 / WebView2 157 已实测可以通过宿主参数开放随机回环调试端口。新 Host 不再逐次派发页面鼠标事件，而是先检查当前构建的页面能力和唯一导出，再调用页面自己的增量函数与强制保存函数。
 
 便携目录还包含独立的管理员辅助程序：
 
@@ -82,18 +82,28 @@ WuwaTappoAutoChest-CdpHost.exe
 4. 输入本次增加量并启动；
 5. 完成、取消或失败后，等待 Wuwa Tappo 自动以无调试端口模式重新打开。
 
-CDP Host 会关闭并重启 Wuwa Tappo，通过随机 `127.0.0.1` 调试端口读取 `.pet-dock-content` 和字符数，再向页面内的宠物区域派发输入事件。它不读取或保存 Cookie、Token、Authorization、账号资料或请求头，也不产生系统级鼠标移动或点击。
+命令行入口：
+
+```powershell
+WuwaTappoAutoChest-CdpHost.exe --native-refill 1000
+WuwaTappoAutoChest-CdpHost.exe --native-refill 50000
+```
+
+Host 会关闭并重启 Wuwa Tappo，通过随机 `127.0.0.1` 调试端口动态发现页面模块。它不读取或保存 Cookie、Token、Authorization、账号资料或请求头，也不产生系统级鼠标移动或点击。页面只向 Host 返回当前账号的 SHA-256 摘要，用于检测任务期间是否切换账号。
+
+每批最多 1000 次。同一批先校验增量，再调用保存函数；保存后重新读取页面状态，确认可用次数和累计次数都达到预期。保存失败只重试保存，不重放已经增加的计数。
 
 安全保护包括：
 
 - 检测到主自动助手仍在运行时拒绝启动；
 - 调试接口只接受回环地址和本次随机端口；
-- CDP 请求有超时，点击按小批发送并等待页面渲染；
-- 连续两轮字符数不增长时立即停止，不继续空转；
+- CDP 请求和页面脚本有超时；
+- 页面能力不唯一、登录变化或计数不一致时立即停止；
+- 保存结果未确认时停止，不自动重放；
 - 无论成功、取消还是异常，都会在 `finally` 阶段关闭调试端口并重启 Wuwa Tappo；
 - 强制结束 CDP Host 进程属于异常中断，此时应人工关闭并重新打开 Wuwa Tappo。
 
-当前运行环境无法完成真实 CDP 运行验收，原因和已完成测试见 [docs/test-results.md](docs/test-results.md)。首次在目标机器使用时，会先做 UAC 和调试端口兼容性验证。
+当前 1.0.4 已完成 1000、5000 和 50000 次真实补数验收：50000 次实际增加阶段约 26.1 秒，Host 工作集约 45.7 MB，结束后调试端口关闭并恢复普通启动。证据见 [docs/test-results.md](docs/test-results.md)。
 
 ### UIA 无鼠标输入恢复
 
@@ -111,9 +121,10 @@ F24 批量输入仍是主路径。新 Worker 在一次批次 1.2 秒没有增长
 
 - 不自动输入账号、密码、短信或验证码；
 - 不绕过 Geetest、风控或登录过期；
-- 不直接修改字符数、宝箱计时或存档；
-- 不调用应用内部的“增加点击”调试事件；
+- 常驻 Worker 不直接修改字符数、宝箱计时或存档；
+- 一次性 Host 只调用当前页面已有的计数与保存能力，不伪造服务器请求；
 - 不直接调用 `/api/frontend/chests/open`；
+- 不猜测或拼接未公开的服务器补数 HTTP 接口；
 - 不导入或复制浏览器 Cookie、Authorization 或 Token；
 - 不开启应用尚未渲染出的宝箱。
 
@@ -127,28 +138,29 @@ CDP Host 是单独的显式一次性入口，不会随主助手自动启动。
 - 已由用户手动完成登录；
 - Wuwa Tappo 主窗口存在。默认不自动启动应用，以避免触发 UAC 或重复授权。
 
-当前调查环境：
+当前验证环境：
 
 ```text
 Windows 11 专业版 10.0.26100
-Wuwa Tappo 1.0.3 UAT CN
-Tauri 2.10.3 + WebView2 155.0.4283.62
+Wuwa Tappo 1.0.4 UAT CN
+Tauri + WebView2 157.0.4341.46
 ```
 
 ## 快速开始
 
 1. 启动并登录在线版 Wuwa Tappo；
-2. 打开 `dist/WuwaTappoAutoChest-Portable/WuwaTappoAutoChest.exe`；
+2. 打开 `dist/WuwaTappoAutoChest-Portable-Native/WuwaTappoAutoChest.exe`；
 3. 点击“启动后台”；
 4. 控制面板显示运行状态、字符数、阶段、真实物品名和自动开箱历史；
-5. 需要补次数时，在“一次性补次数”中输入 1,000–1,000,000，点击“开始一次补足”；
-6. 关闭控制面板不会停止后台，再次打开 EXE 可查看历史或停止任务。
+5. 小批量补次数可在“一次性补次数”中输入 1,000–1,000,000，点击“开始一次补足”；
+6. F24 失效或需要一次补足时，停止后台，再运行同目录的 `WuwaTappoAutoChest-CdpHost.exe`；
+7. 关闭控制面板不会停止后台，再次打开 EXE 可查看历史或停止任务。
 
 命令行入口：
 
 ```powershell
-.\dist\WuwaTappoAutoChest-Portable\WuwaTappoAutoChest.exe --start-background
-.\dist\WuwaTappoAutoChest-Portable\WuwaTappoAutoChest.exe --stop-background
+.\dist\WuwaTappoAutoChest-Portable-Native\WuwaTappoAutoChest.exe --start-background
+.\dist\WuwaTappoAutoChest-Portable-Native\WuwaTappoAutoChest.exe --stop-background
 ```
 
 源码级只读诊断仍保留在 `scripts/`，但发送给朋友时使用便携目录中的原生 EXE 即可。
@@ -270,15 +282,19 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\tests\Test-NativeRewardLookup.ps1
 ```
 
-### 便携包与 CDP Host 结构测试
+### 便携包与原生计数 Host 结构测试
 
 ```powershell
 pwsh -NoProfile -File .\tools\Build-Portable.ps1 `
-  -OutputDirectory .\dist\WuwaTappoAutoChest-CdpTest `
+  -OutputDirectory .\dist\WuwaTappoAutoChest-Portable-Native `
   -Force -SkipZip
 
 pwsh -NoProfile -File .\tests\Test-CdpHostPackage.ps1 `
-  -PackageDirectory .\dist\WuwaTappoAutoChest-CdpTest `
+  -PackageDirectory .\dist\WuwaTappoAutoChest-Portable-Native `
+  -ExpectEmptyState
+
+pwsh -NoProfile -File .\tests\Test-NativeRefillPackage.ps1 `
+  -PackageDirectory .\dist\WuwaTappoAutoChest-Portable-Native `
   -ExpectEmptyState
 
 pwsh -NoProfile -File .\tests\Test-CdpHostPathWalk.ps1
@@ -328,6 +344,15 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 
 上次进程在点击前后中断，程序无法确定服务端结果，因此主动进入未知结果冷却。等待冷却结束，并在应用背包中人工核对。
 
+### 原生 Host 无法启动或补数
+
+- 先停止主助手后台并关闭控制面板；
+- 确认 UAC 已允许本次管理员运行；
+- 确认 Wuwa Tappo 已登录且版本能正常显示宝箱；
+- 查看 `runtime/logs/cdp-host.jsonl` 和 `runtime/logs/cdp-host-cli-error.txt`；
+- 出现 `login-or-account-changed`、`store-state-changed` 或 `post-save-state-not-confirmed` 时不要连续重试，先人工核对页面数量；
+- 强制结束 Host 后，手动关闭并重新打开 Wuwa Tappo，以移除临时调试端口参数。
+
 ### Wuwa Tappo 更新后不再开箱
 
 先通过控制面板或命令停止并重新启动后台 Worker。应用更新会重启 WebView 和账号会话，旧 Worker 可能仍保留更新前的点击确认状态。
@@ -351,7 +376,9 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 - 真实物品名优先来自奖励图片 SHA-256。若 WebView2 命中旧缓存且没有写入新图片，同时资产 ID 也不在图鉴内，程序会明确显示“名称未提供”，不会猜测名称。
 - 当前 UAT 主程序签名状态为 `HashMismatch`。用户已确认信任该文件夹，但生产分发前仍建议重新校验可信安装包。
 - 未登录、Geetest、强制更新和维护公告需要人工处理。
-- CDP Host 已通过编译和包结构测试，但真实 UAC、回环调试端口和页面点击仍需在目标桌面完成验收；若应用禁止远程调试，Host 会退出并恢复普通启动。
+- 原生 Host 已在 1.0.4 通过 1000、5000 和 50000 次真实补数；尚未宣称 200000 次已通过，首次大批量仍建议逐级放大。
+- 页面导出名称是当前构建值，发布版通过资源扫描动态发现；应用更新后若能力不唯一，Host 会拒绝执行。
+- Host 依赖短暂的本地 WebView2 调试端口；它不接受非回环连接，也不会读取 Cookie 或 Token。
 
 ## 项目结构
 
@@ -359,7 +386,7 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 config/                         配置示例与当前本机配置
 docs/investigation.md           调查结论
 docs/design.md                  设计方案
-docs/native-count-refill-design.md 页面原生计数补次数设计（尚未实现）
+docs/native-count-refill-design.md 页面原生计数补次数设计与实测
 docs/test-results.md            实际测试记录
 docs/atlas-gallery.md           离线全图鉴使用说明
 docs/portable.md                便携版与 EXE 使用说明
@@ -369,11 +396,14 @@ dist/                           便携目录与 ZIP
 portable/                       EXE 启动器源码
 portable/CdpHost.cs             管理员 WebView2 CDP 一次性补次数源码
 portable/cdp-host.manifest      CDP Host 的 requireAdministrator 清单
+portable/NativePageRefill.cs    页面能力发现、快照与保存确认
+portable/native/                动态发现、只读快照和批次补数脚本
 scripts/                        启动、停止、状态和工作进程入口
 src/WuwaTappoAutoChest.psm1     核心自动化模块
 tests/Run-Tests.ps1             自动化测试
 tests/Run-AtlasGalleryTests.ps1 图鉴生成结果测试
 tests/Test-NativeRewardLookup.ps1 在线奖励缓存与真实名称映射测试
+tests/Test-NativeRefillPackage.ps1 原生补数包结构与隐私边界测试
 tools/Build-AtlasGallery.ps1    官方公开资源到离线图鉴的生成器
 tools/Build-Portable.ps1         便携包构建脚本
 state/                          运行状态（已忽略）

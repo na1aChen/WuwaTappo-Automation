@@ -5,13 +5,13 @@
 便携目录：
 
 ```text
-dist/WuwaTappoAutoChest-Portable/
+dist/WuwaTappoAutoChest-Portable-Native/
 ```
 
 可直接发送给朋友的压缩包：
 
 ```text
-dist/WuwaTappoAutoChest-Portable.zip
+dist/WuwaTappoAutoChest-Portable-Native.zip
 ```
 
 主启动器：
@@ -33,7 +33,7 @@ WuwaTappoAutoChest.exe
 
 ## 3. 使用流程
 
-1. 解压 `WuwaTappoAutoChest-Portable.zip`；
+1. 解压 `WuwaTappoAutoChest-Portable-Native.zip`；
 2. 启动并登录 Wuwa Tappo；
 3. 双击 `WuwaTappoAutoChest.exe`；
 4. 点击“启动后台”；
@@ -82,9 +82,9 @@ WuwaTappoAutoChest.exe --open-gallery
 
 这些入口可用于桌面快捷方式或其他启动器。
 
-## 6. 一次性 CDP 补次数
+## 6. 页面原生一次性补次数
 
-当前 Wuwa Tappo 1.0.3 / WebView2 156 实测没有开放远程调试端口，因此不要优先使用 CDP。日常补次数请使用主控制面板的“一次性补次数”；CDP Host 仅保留用于其他版本兼容性诊断。
+Wuwa Tappo 1.0.4 / WebView2 157 已实测可以通过宿主参数开放随机回环调试端口。新 Host 不持续发送 F24，也不派发页面鼠标坐标点击，而是调用当前页面自己的增量计数和强制保存函数。
 
 F24 在长时间运行后停止计数时，可使用独立程序：
 
@@ -97,26 +97,33 @@ WuwaTappoAutoChest-CdpHost.exe
 1. 在主控制面板点击“停止后台”；
 2. 关闭主控制面板；
 3. 双击 CDP Host，并在 UAC 中选择“是”；
-4. 输入本次增加量，点击“启动 CDP 并补足”；
+4. 输入本次增加量，点击“启动原生补足”；
 5. 观察状态，完成、取消或失败后等待 Wuwa Tappo 自动恢复。
 
 运行期间 CDP Host 会：
 
 - 重启 Wuwa Tappo，并设置随机本机回环调试端口；
-- 等待 `.pet-dock-content` 和字符数完成加载；
-- 通过 WebView2 CDP 向页面宠物区域派发输入事件；
-- 每批发送后等待页面渲染并核对字符数；
-- 字符数连续不增长时停止；
+- 等待主页面加载并发现当前构建的计数 store、增量函数和保存函数；
+- 每批最多增加 1000 次；
+- 保存后重新读取可用次数和累计次数；
+- 登录、账号摘要或计数不一致时停止；
 - 在成功、取消和异常路径中关闭调试端口并重启 Wuwa Tappo。
 
-不会读取或保存 Cookie、Token、Authorization 或账号资料，也不会产生系统鼠标事件。调试端口只用于本机 `127.0.0.1`。
+不会读取或保存 Cookie、Token、Authorization 或账号原值，也不会产生系统鼠标事件。调试端口只用于本机 `127.0.0.1`。
+
+命令行：
+
+```powershell
+WuwaTappoAutoChest-CdpHost.exe --native-refill 1000
+WuwaTappoAutoChest-CdpHost.exe --native-refill 50000
+```
 
 注意：
 
 - 必须等待主自动助手完全退出，否则 CDP Host 会拒绝运行；
 - 关闭窗口时如果任务仍在运行，程序会先请求取消并等待恢复；
 - 如果 Host 被任务管理器强制结束，调试端口可能随 Wuwa Tappo 保留到下次重启；此时请关闭并重新打开 Wuwa Tappo；
-- 如果当前 Wuwa Tappo 版本禁用远程调试或不再接受页面输入，Host 会停止并恢复普通模式，不会无限重试。
+- 如果当前 Wuwa Tappo 版本禁用远程调试或页面能力不唯一，Host 会停止并恢复普通模式，不会猜测接口。
 
 ## 7. 数据与配置
 
@@ -188,4 +195,14 @@ Worker + 控制面板工作集：约 78–88 MB
 
 字符数达到 10,000 后 Worker 不再发送活动输入，只按空闲间隔扫描宝箱。应用自身仍要求至少 1,000 字符才会显示宝箱入口。
 
-快速补充模式将每 500 个 F24 合并成一次 `SendInput`，每轮最多 1000 个键。补足阶段允许较高 CPU，达标后回到约 0.62% 单核，Worker 内存约 41 MB。
+主 Worker 的快速补充模式仍将每 500 个 F24 合并成一次 `SendInput`，每轮最多 1000 个键。需要大批量补足时使用独立原生 Host。
+
+1.0.4 原生 Host 实测：
+
+| 增量 | 实际增加耗时 | 结果 |
+|---:|---:|---|
+| 1000 | 约 0.58 秒 | 通过 |
+| 5000 | 约 2.86 秒 | 通过 |
+| 50000 | 约 26.12 秒 | 通过 |
+
+50000 次时 Host 工作集约 45.7 MB，结束后正常退出并恢复 Wuwa Tappo。
