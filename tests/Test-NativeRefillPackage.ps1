@@ -86,8 +86,17 @@ Assert-True (Test-Path -LiteralPath $nativeDesign -PathType Leaf) "原生补数�
 Assert-True (Test-Path -LiteralPath $retryDesign -PathType Leaf) "恢复设计文档存在"
 Assert-True (Test-Path -LiteralPath $thirdPartyNotice -PathType Leaf) "第三方许可说明存在"
 
+if (Test-Path -LiteralPath $mainExe -PathType Leaf) {
+    $mainBytes = [System.IO.File]::ReadAllBytes($mainExe)
+    $mainText = [System.Text.Encoding]::Unicode.GetString($mainBytes)
+    Assert-True (
+        $mainText.Contains("by Phrolova2405")
+    ) "主程序包含作者水印"
+}
+
 if (Test-Path -LiteralPath $hostExe -PathType Leaf) {
     $pe = Read-PeInfo -Path $hostExe
+    $hostText = [System.Text.Encoding]::Unicode.GetString($pe.Bytes)
     Assert-True ($pe.Machine -eq 0x014C) "Host 为 x86 PE"
     Assert-True ($pe.OptionalMagic -eq 0x010B) "Host 为 PE32"
     Assert-True ($pe.Subsystem -eq 2) "Host 为 Windows GUI 子系统"
@@ -102,6 +111,9 @@ if (Test-Path -LiteralPath $hostExe -PathType Leaf) {
     Assert-True (
         $manifestText.Contains('PerMonitorV2')
     ) "Host 包含 PerMonitorV2 DPI 感知"
+    Assert-True (
+        $hostText.Contains("by Phrolova2405")
+    ) "Host 包含作者水印"
 }
 
 $discoverText = Read-Text $discoverScript

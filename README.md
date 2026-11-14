@@ -1,4 +1,4 @@
-# Wuwa Tappo 自动字符数与开宝箱工具
+# Wuwa Tappo 自动字符数与开宝箱工具 by Phrolova2405
 
 这是一个 Windows 后台辅助程序，用于自动发现并开启 Wuwa Tappo 自身界面中已经可用的宝箱。
 
@@ -449,4 +449,4 @@ logs/                           运行日志（已忽略）
 - `.gitignore` 忽略本机配置、状态、日志和临时文件。
 - 使用前请确认账号、应用条款以及所在环境允许自动化操作。
 
-<!-- Project marker: by phrolova2405 -->
+<!-- Project marker: by Phrolova2405 -->

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 chcp 65001 >nul
-echo Wuwa Tappo 自动助手 - 旧版历史导入
+echo Wuwa Tappo 自动助手 - 旧版历史导入 by Phrolova2405
 echo.
 echo 运行前请先停止自动助手后台并关闭控制面板。
 echo.

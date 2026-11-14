@@ -17,10 +17,10 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("Wuwa Tappo AutoChest CDP Host")]
-[assembly: AssemblyDescription("WebView2 CDP Host by phrolova2405")]
-[assembly: AssemblyCompany("by phrolova2405")]
-[assembly: AssemblyMetadata("ProjectMarker", "by phrolova2405")]
+[assembly: AssemblyTitle(ProductBranding.HostDisplayName)]
+[assembly: AssemblyDescription(ProductBranding.Author)]
+[assembly: AssemblyCompany(ProductBranding.Author)]
+[assembly: AssemblyMetadata("ProjectMarker", ProductBranding.Author)]
 
 namespace WuwaTappoCdpHost
 {
@@ -87,7 +87,7 @@ namespace WuwaTappoCdpHost
 
         public CdpHostForm()
         {
-            Text = "Wuwa Tappo 原生计数 Host";
+            Text = ProductBranding.HostDisplayName;
             ClientSize = new Size(560, 220);
             MinimumSize = new Size(560, 220);
             StartPosition = FormStartPosition.CenterScreen;
@@ -96,7 +96,7 @@ namespace WuwaTappoCdpHost
             Font = new Font("Segoe UI", 9f);
 
             Label title = new Label();
-            title.Text = "页面原生计数一次性补次数";
+            title.Text = ProductBranding.HostHeadingDisplay;
             title.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
             title.AutoSize = true;
             title.Location = new Point(22, 18);
@@ -148,6 +148,17 @@ namespace WuwaTappoCdpHost
             warningLabel.Location = new Point(22, 140);
             warningLabel.Size = new Size(510, 50);
             Controls.Add(warningLabel);
+
+            Label watermark = new Label();
+            watermark.Text = ProductBranding.Author;
+            watermark.Font = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+            watermark.ForeColor = ProductBranding.WatermarkColor;
+            watermark.BackColor = Color.Transparent;
+            watermark.TextAlign = ContentAlignment.MiddleRight;
+            watermark.Location = new Point(350, 192);
+            watermark.Size = new Size(188, 20);
+            watermark.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            Controls.Add(watermark);
 
             FormClosing += delegate(object sender, FormClosingEventArgs e)
             {

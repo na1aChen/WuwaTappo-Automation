@@ -1,4 +1,4 @@
-# Wuwa Tappo 离线全图鉴
+# Wuwa Tappo 离线全图鉴 by Phrolova2405
 
 ## 1. 说明
 

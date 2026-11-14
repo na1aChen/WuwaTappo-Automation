@@ -1,4 +1,4 @@
-# Wuwa Tappo 原生补数 50 万级稳定性与恢复方案
+# Wuwa Tappo 原生补数 50 万级稳定性与恢复方案 by Phrolova2405
 
 - 制定日期：2026-11-14
 - 目标版本：Wuwa Tappo 1.0.4 / WebView2 157.0.4341.46
@@ -499,10 +499,10 @@ pwsh -NoProfile -File .\tests\Test-NativeRefillPackage.ps1 `
 离线验证：
 
 ```text
-C# 恢复策略与路径自检：22 项通过
+C# 恢复策略、品牌与路径自检：25 项通过
 Boost 页面恢复夹具：5 项通过
 旧 CDP 包结构：17 项通过
-原生 Recovery 包结构：43 项通过
+原生 Recovery 包结构：45 项通过
 旧历史导入夹具：6 项通过
 核心回归：24 项通过
 真实只读集成：27 项通过

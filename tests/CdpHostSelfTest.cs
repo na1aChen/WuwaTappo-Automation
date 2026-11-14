@@ -55,6 +55,23 @@ namespace WuwaTappoCdpHostTests
 
                 RunRecoveryPolicyTests(ref passed);
 
+                AssertTrue(
+                    ProductBranding.Author == "by Phrolova2405",
+                    "统一作者水印");
+                passed++;
+                AssertTrue(
+                    ProductBranding.MainDisplayName.EndsWith(
+                        ProductBranding.Author,
+                        StringComparison.Ordinal),
+                    "主程序名称包含作者水印");
+                passed++;
+                AssertTrue(
+                    ProductBranding.HostDisplayName.EndsWith(
+                        ProductBranding.Author,
+                        StringComparison.Ordinal),
+                    "Host 名称包含作者水印");
+                passed++;
+
                 Console.WriteLine("SUMMARY passed=" + passed + " failed=0");
                 return 0;
             }

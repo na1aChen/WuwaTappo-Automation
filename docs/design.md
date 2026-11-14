@@ -1,4 +1,4 @@
-# Wuwa Tappo 自动字符数与开宝箱设计方案
+# Wuwa Tappo 自动字符数与开宝箱设计方案 by Phrolova2405
 
 ## 1. 目标与边界
 

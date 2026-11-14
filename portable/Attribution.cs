@@ -1,7 +1,7 @@
 using System.Reflection;
 
-[assembly: AssemblyTitle("Wuwa Tappo AutoChest")]
-[assembly: AssemblyDescription("by phrolova2405")]
-[assembly: AssemblyCompany("by phrolova2405")]
-[assembly: AssemblyProduct("Wuwa Tappo AutoChest")]
-[assembly: AssemblyMetadata("ProjectMarker", "by phrolova2405")]
+[assembly: AssemblyTitle(ProductBranding.MainDisplayName)]
+[assembly: AssemblyDescription(ProductBranding.Author)]
+[assembly: AssemblyCompany(ProductBranding.Author)]
+[assembly: AssemblyProduct(ProductBranding.MainDisplayName)]
+[assembly: AssemblyMetadata("ProjectMarker", ProductBranding.Author)]

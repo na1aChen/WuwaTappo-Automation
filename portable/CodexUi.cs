@@ -485,7 +485,7 @@ namespace WuwaTappoPortable
 
         public CodexMainForm()
         {
-            Text = "Wuwa Tappo 自动助手";
+            Text = ProductBranding.MainDisplayName;
             BackColor = CodexPalette.Background;
             ForeColor = CodexPalette.Text;
             Font = CodexFonts.Ui(9.5f, FontStyle.Regular);
@@ -716,7 +716,9 @@ namespace WuwaTappoPortable
             readmeButton.Click += delegate { OpenSafely(PortableRuntime.OpenReadme); };
 
             Label footer = new Label();
-            footer.Text = "关闭此窗口不会停止后台任务  ·  首次使用请先启动并登录 Wuwa Tappo";
+            footer.Text =
+                "关闭此窗口不会停止后台任务  ·  首次使用请先启动并登录 Wuwa Tappo  ·  " +
+                ProductBranding.Author;
             footer.ForeColor = CodexPalette.Muted;
             footer.BackColor = CodexPalette.Background;
             footer.Font = CodexFonts.Mono(8f, FontStyle.Regular);
@@ -794,14 +796,14 @@ namespace WuwaTappoPortable
             titles.Margin = new Padding(0);
             titles.BackColor = CodexPalette.Background;
             Label title = new Label();
-            title.Text = "Wuwa Tappo";
+            title.Text = ProductBranding.MainName;
             title.ForeColor = CodexPalette.Text;
             title.BackColor = CodexPalette.Background;
             title.Font = CodexFonts.Ui(20f, FontStyle.Bold);
             title.AutoSize = true;
             titles.Controls.Add(title, 0, 0);
             Label subtitle = new Label();
-            subtitle.Text = "自动化控制台";
+            subtitle.Text = ProductBranding.MainSubtitle;
             subtitle.ForeColor = CodexPalette.Muted;
             subtitle.BackColor = CodexPalette.Background;
             subtitle.Font = CodexFonts.Mono(8.5f, FontStyle.Regular);

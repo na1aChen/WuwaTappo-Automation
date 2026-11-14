@@ -112,7 +112,7 @@ $portableConfig |
     Set-Content -LiteralPath (Join-Path $runtimeConfig "autochest.json") -Encoding UTF8
 
 $portableReadme = @'
-Wuwa Tappo 自动助手 - 便携版
+Wuwa Tappo 自动助手 - 便携版 by Phrolova2405
 ================================
 
 使用前：
@@ -188,6 +188,7 @@ $launcherSource = Join-Path $projectRoot "portable\Launcher.cs"
 $uiSource = Join-Path $projectRoot "portable\CodexUi.cs"
 $workerSource = Join-Path $projectRoot "portable\NativeWorker.cs"
 $attributionSource = Join-Path $projectRoot "portable\Attribution.cs"
+$brandingSource = Join-Path $projectRoot "portable\Branding.cs"
 $manifestPath = Join-Path $projectRoot "portable\app.manifest"
 $compilerArguments = @(
     "/nologo",
@@ -209,7 +210,8 @@ $compilerArguments = @(
     $launcherSource,
     $uiSource,
     $workerSource,
-    $attributionSource
+    $attributionSource,
+    $brandingSource
 )
 
 & $csc @compilerArguments
@@ -238,7 +240,8 @@ $cdpHostCompilerArguments = @(
     "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
     $cdpHostSource,
     $nativeRefillSource,
-    $nativeRecoverySource
+    $nativeRecoverySource,
+    $brandingSource
 )
 
 & $csc @cdpHostCompilerArguments

@@ -592,7 +592,7 @@ namespace WuwaTappoPortable
 
         public MainForm()
         {
-            Text = "Wuwa Tappo 自动助手";
+            Text = ProductBranding.MainDisplayName;
             ClientSize = new Size(720, 440);
             MinimumSize = new Size(720, 440);
             MaximizeBox = false;
@@ -602,14 +602,16 @@ namespace WuwaTappoPortable
             Font = new Font("Microsoft YaHei UI", 9.5f);
 
             Label title = new Label();
-            title.Text = "Wuwa Tappo 自动助手";
+            title.Text = ProductBranding.MainDisplayName;
             title.Font = new Font("Microsoft YaHei UI", 19f, FontStyle.Bold);
             title.AutoSize = true;
             title.Location = new Point(24, 20);
             Controls.Add(title);
 
             Label subtitle = new Label();
-            subtitle.Text = "字符数按需补充 · 自动监测宝箱 · 后台静默运行";
+            subtitle.Text =
+                "字符数按需补充 · 自动监测宝箱 · 后台静默运行  ·  " +
+                ProductBranding.Author;
             subtitle.ForeColor = Color.FromArgb(150, 166, 184);
             subtitle.AutoSize = true;
             subtitle.Location = new Point(27, 65);
