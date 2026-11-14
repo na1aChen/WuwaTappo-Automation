@@ -61,6 +61,8 @@ $PackageDirectory = [System.IO.Path]::GetFullPath($PackageDirectory)
 $mainExe = Join-Path $PackageDirectory "WuwaTappoAutoChest.exe"
 $hostExe = Join-Path $PackageDirectory "WuwaTappoAutoChest-CdpHost.exe"
 $readme = Join-Path $PackageDirectory "README.txt"
+$historyImportCmd = Join-Path $PackageDirectory "Import-LegacyHistory.cmd"
+$historyImportScript = Join-Path $PackageDirectory "Import-LegacyHistory.ps1"
 $runtimeDirectory = Join-Path $PackageDirectory "runtime"
 $runtimeConfig = Join-Path $runtimeDirectory "config\autochest.json"
 $nativeDirectory = Join-Path $runtimeDirectory "native"
@@ -74,6 +76,8 @@ $thirdPartyNotice = Join-Path $runtimeDirectory "docs\third-party-notices.md"
 Assert-True (Test-Path -LiteralPath $mainExe -PathType Leaf) "主程序存在"
 Assert-True (Test-Path -LiteralPath $hostExe -PathType Leaf) "原生计数 Host 存在"
 Assert-True (Test-Path -LiteralPath $readme -PathType Leaf) "根目录使用说明存在"
+Assert-True (Test-Path -LiteralPath $historyImportCmd -PathType Leaf) "旧历史导入入口存在"
+Assert-True (Test-Path -LiteralPath $historyImportScript -PathType Leaf) "旧历史导入脚本存在"
 Assert-True (Test-Path -LiteralPath $runtimeConfig -PathType Leaf) "便携配置存在"
 Assert-True (Test-Path -LiteralPath $discoverScript -PathType Leaf) "页面能力发现脚本存在"
 Assert-True (Test-Path -LiteralPath $stateScript -PathType Leaf) "页面只读快照脚本存在"
@@ -164,6 +168,10 @@ Assert-True (
     $readmeText.Contains("WebSocket") -and
     $readmeText.Contains("3 次会话")
 ) "README.txt 说明会话级恢复上限"
+Assert-True (
+    $readmeText.Contains("Import-LegacyHistory.cmd") -and
+    $readmeText.Contains("operation_id")
+) "README.txt 说明旧历史迁移"
 
 if (Test-Path -LiteralPath $runtimeConfig -PathType Leaf) {
     $config = Get-Content -LiteralPath $runtimeConfig -Raw -Encoding UTF8 |

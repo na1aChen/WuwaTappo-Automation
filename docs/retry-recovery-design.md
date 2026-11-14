@@ -502,7 +502,8 @@ pwsh -NoProfile -File .\tests\Test-NativeRefillPackage.ps1 `
 C# 恢复策略与路径自检：22 项通过
 Boost 页面恢复夹具：5 项通过
 旧 CDP 包结构：17 项通过
-原生 Recovery 包结构：40 项通过
+原生 Recovery 包结构：43 项通过
+旧历史导入夹具：6 项通过
 核心回归：24 项通过
 真实只读集成：27 项通过
 ```

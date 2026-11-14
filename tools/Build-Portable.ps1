@@ -48,6 +48,10 @@ New-Item -ItemType Directory -Path $runtimeNative -Force | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $projectRoot "gallery") -Destination $runtimeDirectory -Recurse
 Copy-Item -Path (Join-Path $projectRoot "portable\native\*") -Destination $runtimeNative -Force
+Copy-Item `
+    -Path (Join-Path $projectRoot "portable\history-import\*") `
+    -Destination $OutputDirectory `
+    -Force
 $catalogPath = Join-Path $projectRoot "gallery\catalog.json"
 $catalog = Get-Content -LiteralPath $catalogPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $imageHashes = [ordered]@{}
@@ -147,6 +151,13 @@ Wuwa Tappo 自动助手 - 便携版
   WuwaTappoAutoChest-CdpHost.exe --native-refill 50000
 
 首次建议先测试 1000。UAC 只用于本次 Host 的重启与回环调试。
+
+旧版开箱历史迁移：
+- 先停止自动助手后台并关闭控制面板。
+- 双击 Import-LegacyHistory.cmd。
+- 选择旧版目录中的 runtime\state\history.jsonl。
+- 工具按 operation_id 去重、排序并备份新包原历史。
+- 新包 ZIP 初始历史为空；不会包含发布者的本机记录。
 
 快捷命令：
   WuwaTappoAutoChest.exe --start-background

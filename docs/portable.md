@@ -139,6 +139,24 @@ runtime/logs/
 
 移动整个便携目录后，状态、历史和日志路径会随目录变化，不依赖原开发目录。`history.jsonl` 跨 Worker 与控制面板重启保留；发送给朋友的初始 ZIP 不包含本机历史。
 
+### 7.1 从旧版本迁移开箱历史
+
+不同便携目录彼此独立，不会自动共享历史。旧版升级时可双击：
+
+```text
+Import-LegacyHistory.cmd
+```
+
+操作步骤：
+
+1. 停止自动助手后台并关闭控制面板；
+2. 双击导入器；
+3. 选择旧版目录中的 `runtime\state\history.jsonl`；
+4. 工具按 `operation_id` 去重、按时间排序并写入新包；
+5. 若新包已经存在历史，会先保存一份 `history.before-import-*.jsonl`。
+
+导入器只处理本地 JSON Lines 历史，不读取账号、Cookie、Token 或请求头，也不联网。
+
 奖励名称识别只读取在线版 Wuwa Tappo 的 WebView2 本地资产 ID 与图片缓存，并使用随包图鉴的 SHA-256 索引匹配真实物品名。不会读取或输出账号、密码、Cookie、Token、验证码、请求头或聊天内容。
 
 CDP Host 的独立日志位于：

@@ -63,6 +63,15 @@ dist/WuwaTappoAutoChest-Portable-Native.zip
 WuwaTappoAutoChest.exe
 ```
 
+发布 ZIP 的历史目录为空，不会包含制作者本机的开箱记录。朋友从旧版本升级时：
+
+1. 先停止自动助手后台并关闭控制面板；
+2. 双击新目录中的 `Import-LegacyHistory.cmd`；
+3. 选择旧版本目录下的 `runtime\state\history.jsonl`；
+4. 工具按 `operation_id` 去重合并，并自动备份新包原历史。
+
+这解决的是不同便携目录之间无法自动共享历史的问题；不联网，也不会上传历史。
+
 控制面板支持启动后台、停止后台、查看状态和打开离线图鉴。关闭控制面板不会停止后台任务。
 
 便携版使用原生 C# 后台进程，只依赖 Windows 自带的 .NET Framework 4.8 和 UI Automation，不需要 PowerShell 7，也不会再启动 PowerShell Worker。采用 x86 便携构建并加入按可见行渲染、UIA 属性缓存和自适应扫描后，实测 Worker 约 43.3 MB，Worker 加控制面板约 78–88 MB，空闲 CPU 约 0.7% 单核。必须发送完整 ZIP，不能只发送 EXE。详细说明见 [docs/portable.md](docs/portable.md)。
