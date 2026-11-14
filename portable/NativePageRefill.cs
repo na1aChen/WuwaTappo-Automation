@@ -33,6 +33,8 @@ namespace WuwaTappoCdpHost
         public bool Ok;
         public string Error = "";
         public int Delta;
+        public long ExpectedAvailable;
+        public long ExpectedCumulative;
         public NativePageSnapshot Before;
         public NativePageSnapshot After;
     }
@@ -125,14 +127,21 @@ namespace WuwaTappoCdpHost
                 Ok = GetBool(value, "ok", false),
                 Error = GetString(value, "error", ""),
                 Delta = GetInt(value, "delta", delta),
+                ExpectedAvailable = before.Available + delta,
+                ExpectedCumulative = before.Cumulative + delta,
                 Before = before
             };
             Dictionary<string, object> after = GetDictionary(value, "after");
+            if (after == null)
+                after = GetDictionary(value, "actual");
             if (after != null)
             {
                 result.After = new NativePageSnapshot {
                     LoggedIn = GetBool(after, "loggedIn", false),
-                    AccountKey = before.AccountKey,
+                    AccountKey = GetString(
+                        after,
+                        "accountKey",
+                        before.AccountKey),
                     Available = GetLong(after, "available", 0),
                     Cumulative = GetLong(after, "cumulative", 0),
                     Local = GetLong(after, "local", 0),

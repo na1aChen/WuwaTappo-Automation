@@ -43,7 +43,14 @@ gallery/index.html
 
 ## Windows 便携版
 
-最新原生测试包可直接打包发送给朋友，且不覆盖原 Hybrid：
+推荐使用最终恢复包，可直接打包发送给朋友，且不覆盖原 Hybrid：
+
+```text
+dist/WuwaTappoAutoChest-Portable-Native-Recovery/
+dist/WuwaTappoAutoChest-Portable-Native-Recovery.zip
+```
+
+原 Native 包继续保留，便于回退和对照：
 
 ```text
 dist/WuwaTappoAutoChest-Portable-Native/
@@ -87,6 +94,7 @@ WuwaTappoAutoChest-CdpHost.exe
 ```powershell
 WuwaTappoAutoChest-CdpHost.exe --native-refill 1000
 WuwaTappoAutoChest-CdpHost.exe --native-refill 50000
+WuwaTappoAutoChest-CdpHost.exe --native-refill 500000
 ```
 
 Host 会关闭并重启 Wuwa Tappo，通过随机 `127.0.0.1` 调试端口动态发现页面模块。它不读取或保存 Cookie、Token、Authorization、账号资料或请求头，也不产生系统级鼠标移动或点击。页面只向 Host 返回当前账号的 SHA-256 摘要，用于检测任务期间是否切换账号。
@@ -99,11 +107,20 @@ Host 会关闭并重启 Wuwa Tappo，通过随机 `127.0.0.1` 调试端口动态
 - 调试接口只接受回环地址和本次随机端口；
 - CDP 请求和页面脚本有超时；
 - 页面能力不唯一、登录变化或计数不一致时立即停止；
-- 保存结果未确认时停止，不自动重放；
+- 保存后未确认先做 5 次只读复核；核心计数稳定未前进时最多安全重基准 5 次；
+- WebSocket 断开时最多恢复 3 次会话，每次按页面绝对计数重新对账；
 - 无论成功、取消还是异常，都会在 `finally` 阶段关闭调试端口并重启 Wuwa Tappo；
 - 强制结束 CDP Host 进程属于异常中断，此时应人工关闭并重新打开 Wuwa Tappo。
 
-当前 1.0.4 已完成 1000、5000 和 50000 次真实补数验收：50000 次实际增加阶段约 26.1 秒，Host 工作集约 45.7 MB，结束后调试端口关闭并恢复普通启动。证据见 [docs/test-results.md](docs/test-results.md)。
+当前 1.0.4 最终恢复版已完成 500,000 和 1,000,000 次真实补数验收：
+
+- 500,000 次耗时约 262.8 秒，命中一次安全回滚重基准；
+- 1,000,000 次耗时约 525.1 秒，命中两次安全回滚重基准；
+- 两轮结束时可用次数和累计次数均精确达到绝对目标；
+- Host 工作集约 46 MB，结束后调试端口关闭并恢复普通启动；
+- 没有结果未知后重发整批，也没有重复计数。
+
+证据见 [docs/test-results.md](docs/test-results.md)。
 
 ### UIA 无鼠标输入恢复
 
@@ -146,10 +163,12 @@ Wuwa Tappo 1.0.4 UAT CN
 Tauri + WebView2 157.0.4341.46
 ```
 
+恢复版把批次错误拆成写入前冲突、增量中断、保存后未确认和保存失败。`store-state-changed` 与可证明已保存的增量中断会按最新页面快照重算剩余量，连续 5 次失败才停止；保存后未确认只做只读复核，不重新增加整批。详细设计见 [docs/retry-recovery-design.md](docs/retry-recovery-design.md)。
+
 ## 快速开始
 
 1. 启动并登录在线版 Wuwa Tappo；
-2. 打开 `dist/WuwaTappoAutoChest-Portable-Native/WuwaTappoAutoChest.exe`；
+2. 打开 `dist/WuwaTappoAutoChest-Portable-Native-Recovery/WuwaTappoAutoChest.exe`；
 3. 点击“启动后台”；
 4. 控制面板显示运行状态、字符数、阶段、真实物品名和自动开箱历史；
 5. 小批量补次数可在“一次性补次数”中输入 1,000–1,000,000，点击“开始一次补足”；
@@ -159,8 +178,8 @@ Tauri + WebView2 157.0.4341.46
 命令行入口：
 
 ```powershell
-.\dist\WuwaTappoAutoChest-Portable-Native\WuwaTappoAutoChest.exe --start-background
-.\dist\WuwaTappoAutoChest-Portable-Native\WuwaTappoAutoChest.exe --stop-background
+.\dist\WuwaTappoAutoChest-Portable-Native-Recovery\WuwaTappoAutoChest.exe --start-background
+.\dist\WuwaTappoAutoChest-Portable-Native-Recovery\WuwaTappoAutoChest.exe --stop-background
 ```
 
 源码级只读诊断仍保留在 `scripts/`，但发送给朋友时使用便携目录中的原生 EXE 即可。
@@ -286,18 +305,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 
 ```powershell
 pwsh -NoProfile -File .\tools\Build-Portable.ps1 `
-  -OutputDirectory .\dist\WuwaTappoAutoChest-Portable-Native `
-  -Force -SkipZip
+  -OutputDirectory .\dist\WuwaTappoAutoChest-Portable-Native-Recovery `
+  -Force
 
 pwsh -NoProfile -File .\tests\Test-CdpHostPackage.ps1 `
-  -PackageDirectory .\dist\WuwaTappoAutoChest-Portable-Native `
+  -PackageDirectory .\dist\WuwaTappoAutoChest-Portable-Native-Recovery `
   -ExpectEmptyState
 
 pwsh -NoProfile -File .\tests\Test-NativeRefillPackage.ps1 `
-  -PackageDirectory .\dist\WuwaTappoAutoChest-Portable-Native `
+  -PackageDirectory .\dist\WuwaTappoAutoChest-Portable-Native-Recovery `
   -ExpectEmptyState
 
 pwsh -NoProfile -File .\tests\Test-CdpHostPathWalk.ps1
+
+node .\tests\Test-BoostRecovery.mjs
 ```
 
 ### 后台生命周期测试
@@ -376,7 +397,7 @@ WebView UI Automation 结构可能与当前版本不一致。程序会拒绝猜�
 - 真实物品名优先来自奖励图片 SHA-256。若 WebView2 命中旧缓存且没有写入新图片，同时资产 ID 也不在图鉴内，程序会明确显示“名称未提供”，不会猜测名称。
 - 当前 UAT 主程序签名状态为 `HashMismatch`。用户已确认信任该文件夹，但生产分发前仍建议重新校验可信安装包。
 - 未登录、Geetest、强制更新和维护公告需要人工处理。
-- 原生 Host 已在 1.0.4 通过 1000、5000 和 50000 次真实补数；尚未宣称 200000 次已通过，首次大批量仍建议逐级放大。
+- 原生 Host 已在 1.0.4 通过 500,000 和 1,000,000 次真实补数，但单次通过不等于统计意义上的 99%；首次在新环境使用时仍建议先跑 1,000 和 5,000。
 - 页面导出名称是当前构建值，发布版通过资源扫描动态发现；应用更新后若能力不唯一，Host 会拒绝执行。
 - Host 依赖短暂的本地 WebView2 调试端口；它不接受非回环连接，也不会读取 Cookie 或 Token。
 
@@ -388,6 +409,7 @@ docs/investigation.md           调查结论
 docs/design.md                  设计方案
 docs/native-count-refill-design.md 页面原生计数补次数设计与实测
 docs/test-results.md            实际测试记录
+docs/retry-recovery-design.md    50 万级稳定性与恢复状态机方案
 docs/atlas-gallery.md           离线全图鉴使用说明
 docs/portable.md                便携版与 EXE 使用说明
 gallery/index.html              已生成的全图鉴页面
@@ -397,6 +419,7 @@ portable/                       EXE 启动器源码
 portable/CdpHost.cs             管理员 WebView2 CDP 一次性补次数源码
 portable/cdp-host.manifest      CDP Host 的 requireAdministrator 清单
 portable/NativePageRefill.cs    页面能力发现、快照与保存确认
+portable/NativeRecoveryPolicy.cs 批次恢复预算与安全重基准判定
 portable/native/                动态发现、只读快照和批次补数脚本
 scripts/                        启动、停止、状态和工作进程入口
 src/WuwaTappoAutoChest.psm1     核心自动化模块

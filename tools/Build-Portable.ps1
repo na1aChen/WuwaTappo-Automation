@@ -94,6 +94,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "docs\portable.md") -Destination 
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\investigation.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\design.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\native-count-refill-design.md") -Destination $runtimeDocs
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs\retry-recovery-design.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\test-results.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\third-party-notices.md") -Destination $runtimeDocs
 Copy-Item -LiteralPath (Join-Path $projectRoot ".env.example") -Destination $runtimeDirectory
@@ -134,7 +135,9 @@ Wuwa Tappo 自动助手 - 便携版
 - 运行前必须停止主助手后台并关闭主控制面板。
 - Host 会短暂重启 Wuwa Tappo，只开放随机 127.0.0.1 调试端口。
 - Host 动态发现当前页面已有的计数与保存函数，不读取 Cookie、Token 或账号原值。
-- 每 1000 次保存并核对一次；失败时停止，不自动重放结果未知的批次。
+- 每 1000 次保存并核对一次；预检冲突可重新取样恢复，保存后未确认只做只读复核。
+- 连续 5 次预检冲突停止；结果未知时绝不重发整批，避免重复增加。
+- WebSocket 断开时最多重启并恢复 3 次会话，每次按页面绝对计数和原目标重新对账。
 - 完成后 Host 自动退出，Wuwa Tappo 以普通模式重新启动。
 
 图形界面：
@@ -206,6 +209,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exePath -PathType Leaf
 $cdpHostExePath = Join-Path $OutputDirectory "WuwaTappoAutoChest-CdpHost.exe"
 $cdpHostSource = Join-Path $projectRoot "portable\CdpHost.cs"
 $nativeRefillSource = Join-Path $projectRoot "portable\NativePageRefill.cs"
+$nativeRecoverySource = Join-Path $projectRoot "portable\NativeRecoveryPolicy.cs"
 $cdpHostManifest = Join-Path $projectRoot "portable\cdp-host.manifest"
 $cdpHostCompilerArguments = @(
     "/nologo",
@@ -222,7 +226,8 @@ $cdpHostCompilerArguments = @(
     "/reference:$(Join-Path $frameworkDirectory 'System.Windows.Forms.dll')",
     "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
     $cdpHostSource,
-    $nativeRefillSource
+    $nativeRefillSource,
+    $nativeRecoverySource
 )
 
 & $csc @cdpHostCompilerArguments

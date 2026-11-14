@@ -35,6 +35,7 @@ try {
         "/reference:$(Join-Path $frameworkDirectory 'System.Web.Extensions.dll')",
         (Join-Path $projectRoot "portable\CdpHost.cs"),
         (Join-Path $projectRoot "portable\NativePageRefill.cs"),
+        (Join-Path $projectRoot "portable\NativeRecoveryPolicy.cs"),
         (Join-Path $projectRoot "tests\CdpHostSelfTest.cs")
     )
     & $csc @compilerArguments

@@ -260,11 +260,33 @@ namespace WuwaTappoCdpHost
 
         internal string RunRefill(int amount, CancellationToken cancellationToken)
         {
+            return RunRefillSession(
+                amount,
+                cancellationToken,
+                0,
+                0,
+                0,
+                "");
+        }
+
+        private string RunRefillSession(
+            int amount,
+            CancellationToken cancellationToken,
+            int transportRecoveries,
+            long resumeTargetAvailable,
+            long resumeTargetCumulative,
+            string resumeAccountKey)
+        {
             EnsureMainAutomationIsStopped();
             string executable = FindWuwaExecutable();
             string finalStatus = "";
             Exception failure = null;
             bool restoreAttempted = false;
+            bool resumeRequested = false;
+            string resumeReason = "";
+            long targetAvailable = resumeTargetAvailable;
+            long targetCumulative = resumeTargetCumulative;
+            string taskAccountKey = resumeAccountKey ?? "";
 
             activePort = AllocateLoopbackPort();
             WriteLog(
@@ -312,28 +334,89 @@ namespace WuwaTappoCdpHost
                         profile,
                         TimeSpan.FromSeconds(30),
                         cancellationToken);
-                    long targetCount = start.Available + amount;
+                    long reportStartAvailable = start.Available;
+                    long reportStartCumulative = start.Cumulative;
+                    if (resumeTargetAvailable > 0 &&
+                        resumeTargetCumulative > 0)
+                    {
+                        if (!String.IsNullOrWhiteSpace(resumeAccountKey) &&
+                            !String.Equals(
+                                resumeAccountKey,
+                                start.AccountKey,
+                                StringComparison.Ordinal))
+                        {
+                            throw new InvalidOperationException(
+                                "会话恢复时账号摘要发生变化，已停止补数。");
+                        }
+                        targetAvailable = resumeTargetAvailable;
+                        targetCumulative = resumeTargetCumulative;
+                        reportStartAvailable =
+                            Math.Max(0L, targetAvailable - amount);
+                        reportStartCumulative =
+                            Math.Max(0L, targetCumulative - amount);
+                        WriteLog(
+                            "native_session_rebased",
+                            String.Format(
+                                CultureInfo.InvariantCulture,
+                                "recovery={0}; reopened_available={1}; " +
+                                "reopened_cumulative={2}; target_available={3}; " +
+                                "target_cumulative={4}; remaining={5}",
+                                transportRecoveries,
+                                start.Available,
+                                start.Cumulative,
+                                targetAvailable,
+                                targetCumulative,
+                                NativeRecoveryPolicy.Remaining(
+                                    targetAvailable,
+                                    targetCumulative,
+                                    start)));
+                    }
+                    else
+                    {
+                        targetAvailable = start.Available + amount;
+                        targetCumulative = start.Cumulative + amount;
+                    }
+                    if (String.IsNullOrWhiteSpace(taskAccountKey))
+                        taskAccountKey = start.AccountKey;
                     SetStatus(String.Format(
                         "原生计数开始：{0:N0} → {1:N0}",
-                        start.Available,
-                        targetCount));
+                        reportStartAvailable,
+                        targetAvailable));
                     WriteLog(
                         "native_refill_started",
                         String.Format(
-                            "available={0}; cumulative={1}; target={2}; mode={3}",
+                            "available={0}; cumulative={1}; target_available={2}; " +
+                            "target_cumulative={3}; mode={4}; " +
+                            "preflight_retry_limit={5}; post_save_poll_count={6}",
                             start.Available,
                             start.Cumulative,
-                            targetCount,
-                            profile.CountMode));
+                            targetAvailable,
+                            targetCumulative,
+                            profile.CountMode,
+                            NativeRecoveryPolicy.MaxPreflightRetries,
+                            NativeRecoveryPolicy.PostSavePollCount));
 
                     NativePageSnapshot current = start;
                     int sent = 0;
+                    int preflightFailures = 0;
+                    int incrementFailures = 0;
+                    int preflightRecoveries = 0;
+                    int incrementRecoveries = 0;
+                    int postSaveRecoveries = 0;
+                    int postSaveRebaseFailures = 0;
+                    int postSaveRebases = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
 
-                    while (current.Available < targetCount)
+                    while (NativeRecoveryPolicy.Remaining(
+                               targetAvailable,
+                               targetCumulative,
+                               current) > 0)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        long remaining = targetCount - current.Available;
+                        long remaining = NativeRecoveryPolicy.Remaining(
+                            targetAvailable,
+                            targetCumulative,
+                            current);
                         int batch = (int)Math.Min(
                             1000L,
                             Math.Max(1L, remaining));
@@ -343,48 +426,418 @@ namespace WuwaTappoCdpHost
                             current,
                             batch,
                             cancellationToken);
-                        if (!result.Ok || result.After == null)
+                        NativePageSnapshot batchAfter = null;
+
+                        if (!result.Ok)
                         {
-                            throw new InvalidOperationException(
-                                "页面原生计数未确认：" +
-                                (String.IsNullOrWhiteSpace(result.Error)
-                                    ? "unknown"
-                                    : result.Error));
+                            if (NativeRecoveryPolicy.IsPreflightConflict(result.Error))
+                            {
+                                if (!NativeRecoveryPolicy.CanRetryPreflight(
+                                        preflightFailures))
+                                {
+                                    throw new InvalidOperationException(
+                                        "预检状态连续变化，已达到 " +
+                                        NativeRecoveryPolicy.MaxPreflightRetries +
+                                        " 次恢复上限：" + result.Error);
+                                }
+
+                                preflightFailures++;
+                                NativePageSnapshot rebased =
+                                    NativePageRefill.ReadSnapshot(
+                                        client,
+                                        profile,
+                                        cancellationToken);
+                                if (!NativeRecoveryPolicy.CanRebase(
+                                        start,
+                                        current,
+                                        rebased))
+                                {
+                                    WriteLog(
+                                        "native_batch_failed",
+                                        NativeRecoveryPolicy.DescribeDelta(
+                                            "preflight-rebase-rejected",
+                                            preflightFailures,
+                                            current.Available,
+                                            current.Cumulative,
+                                            current,
+                                            rebased));
+                                    throw new InvalidOperationException(
+                                        "预检冲突后状态无法安全重基准：" +
+                                        "账号变化或可用/累计计数倒退。");
+                                }
+                                WriteLog(
+                                    "native_batch_preflight_conflict",
+                                    NativeRecoveryPolicy.DescribeDelta(
+                                        result.Error,
+                                        preflightFailures,
+                                        current.Available,
+                                        current.Cumulative,
+                                        current,
+                                        rebased));
+                                WriteLog(
+                                    "native_batch_rebased",
+                                    String.Format(
+                                        CultureInfo.InvariantCulture,
+                                        "attempt={0}; available={1}; cumulative={2}; " +
+                                        "local={3}; remaining={4}",
+                                        preflightFailures,
+                                        rebased.Available,
+                                        rebased.Cumulative,
+                                        rebased.Local,
+                                        NativeRecoveryPolicy.Remaining(
+                                            targetAvailable,
+                                            targetCumulative,
+                                            rebased)));
+                                current = rebased;
+                                preflightRecoveries++;
+                                SleepWithCancellation(
+                                    Math.Min(
+                                        800,
+                                        200 * preflightFailures),
+                                    cancellationToken);
+                                continue;
+                            }
+
+                            if (NativeRecoveryPolicy.IsIncrementUnconfirmed(
+                                    result.Error))
+                            {
+                                if (!NativeRecoveryPolicy.CanRetryPreflight(
+                                        incrementFailures))
+                                {
+                                    throw new InvalidOperationException(
+                                        "增量状态连续变化，已达到 " +
+                                        NativeRecoveryPolicy.MaxPreflightRetries +
+                                        " 次恢复上限：" + result.Error);
+                                }
+
+                                incrementFailures++;
+                                NativePageSnapshot observed = result.After;
+                                if (observed == null)
+                                {
+                                    observed = NativePageRefill.ReadSnapshot(
+                                        client,
+                                        profile,
+                                        cancellationToken);
+                                }
+                                if (!NativeRecoveryPolicy.CanRebase(
+                                        start,
+                                        current,
+                                        observed))
+                                {
+                                    WriteLog(
+                                        "native_batch_failed",
+                                        NativeRecoveryPolicy.DescribeDelta(
+                                            "increment-rebase-rejected",
+                                            incrementFailures,
+                                            result.ExpectedAvailable,
+                                            result.ExpectedCumulative,
+                                            current,
+                                            observed));
+                                    throw new InvalidOperationException(
+                                        "增量中断后状态无法安全重基准：" +
+                                        "账号变化或可用/累计计数倒退。");
+                                }
+
+                                WriteLog(
+                                    "native_batch_increment_conflict",
+                                    NativeRecoveryPolicy.DescribeDelta(
+                                        result.Error,
+                                        incrementFailures,
+                                        result.ExpectedAvailable,
+                                        result.ExpectedCumulative,
+                                        current,
+                                        observed));
+                                WriteLog(
+                                    "native_batch_rebased",
+                                    String.Format(
+                                        CultureInfo.InvariantCulture,
+                                        "attempt={0}; source=increment; " +
+                                        "available={1}; cumulative={2}; " +
+                                        "local={3}; remaining={4}",
+                                        incrementFailures,
+                                        observed.Available,
+                                        observed.Cumulative,
+                                        observed.Local,
+                                        NativeRecoveryPolicy.Remaining(
+                                            targetAvailable,
+                                            targetCumulative,
+                                            observed)));
+                                current = observed;
+                                incrementRecoveries++;
+                                SleepWithCancellation(
+                                    Math.Min(
+                                        800,
+                                        200 * incrementFailures),
+                                    cancellationToken);
+                                continue;
+                            }
+
+                            if (NativeRecoveryPolicy.IsPostSaveUnconfirmed(
+                                    result.Error))
+                            {
+                                NativePageSnapshot observed = result.After;
+                                NativePageSnapshot lastObserved = null;
+                                bool confirmed = false;
+                                bool coreChanged = false;
+                                for (int poll = 1;
+                                     poll <= NativeRecoveryPolicy.PostSavePollCount;
+                                     poll++)
+                                {
+                                    cancellationToken.ThrowIfCancellationRequested();
+                                    if (observed == null)
+                                    {
+                                        observed = NativePageRefill.ReadSnapshot(
+                                            client,
+                                            profile,
+                                        cancellationToken);
+                                    }
+                                    EnsureSameAccount(start, observed);
+                                    lastObserved = observed;
+                                    if (!NativeRecoveryPolicy.IsStableNoCoreChange(
+                                            current,
+                                            observed))
+                                    {
+                                        coreChanged = true;
+                                    }
+                                    WriteLog(
+                                        "native_post_save_poll",
+                                        NativeRecoveryPolicy.DescribeDelta(
+                                            result.Error,
+                                            poll,
+                                            result.ExpectedAvailable,
+                                            result.ExpectedCumulative,
+                                            current,
+                                            observed));
+                                    if (NativeRecoveryPolicy.IsBatchConfirmed(
+                                            current,
+                                            observed,
+                                            batch))
+                                    {
+                                        confirmed = true;
+                                        break;
+                                    }
+                                    observed = null;
+                                    if (poll <
+                                        NativeRecoveryPolicy.PostSavePollCount)
+                                    {
+                                        SleepWithCancellation(
+                                            NativeRecoveryPolicy
+                                                .PostSavePollDelayMilliseconds,
+                                            cancellationToken);
+                                    }
+                                }
+
+                                if (!confirmed)
+                                {
+                                    if (!coreChanged &&
+                                        NativeRecoveryPolicy
+                                            .IsStableNoCoreChange(
+                                                current,
+                                                lastObserved) &&
+                                        NativeRecoveryPolicy
+                                            .CanRetryPreflight(
+                                                postSaveRebaseFailures))
+                                    {
+                                        postSaveRebaseFailures++;
+                                        postSaveRebases++;
+                                        WriteLog(
+                                            "native_batch_rollback_rebased",
+                                            NativeRecoveryPolicy.DescribeDelta(
+                                                "post-save-stable-no-core-change",
+                                                postSaveRebaseFailures,
+                                                result.ExpectedAvailable,
+                                                result.ExpectedCumulative,
+                                                current,
+                                                lastObserved));
+                                        current = lastObserved;
+                                        SleepWithCancellation(500, cancellationToken);
+                                        continue;
+                                    }
+
+                                    NativePageSnapshot actual = null;
+                                    try
+                                    {
+                                        actual = NativePageRefill.ReadSnapshot(
+                                            client,
+                                            profile,
+                                            cancellationToken);
+                                    }
+                                    catch
+                                    {
+                                    }
+                                    WriteLog(
+                                        "native_batch_ambiguous",
+                                        NativeRecoveryPolicy.DescribeDelta(
+                                            "post-save-state-not-confirmed",
+                                            NativeRecoveryPolicy.PostSavePollCount,
+                                            result.ExpectedAvailable,
+                                            result.ExpectedCumulative,
+                                            current,
+                                            actual ?? result.After));
+                                    if (!coreChanged)
+                                    {
+                                        throw new InvalidOperationException(
+                                            "保存后核心计数连续未前进，且已达到 " +
+                                            NativeRecoveryPolicy
+                                                .MaxPreflightRetries +
+                                            " 次安全回滚重基准上限。");
+                                    }
+                                    throw new InvalidOperationException(
+                                        "保存后连续 " +
+                                        NativeRecoveryPolicy.PostSavePollCount +
+                                        " 次只读复核仍未确认；为避免重复增加，" +
+                                        "本批不会重发。");
+                                }
+
+                                batchAfter = observed;
+                                postSaveRecoveries++;
+                            }
+                            else
+                            {
+                                NativePageSnapshot actual = result.After;
+                                if (actual == null)
+                                {
+                                    try
+                                    {
+                                        actual = NativePageRefill.ReadSnapshot(
+                                            client,
+                                            profile,
+                                            cancellationToken);
+                                    }
+                                    catch
+                                    {
+                                    }
+                                }
+                                WriteLog(
+                                    "native_batch_failed",
+                                    NativeRecoveryPolicy.DescribeDelta(
+                                        String.IsNullOrWhiteSpace(result.Error)
+                                            ? "unknown"
+                                            : result.Error,
+                                        0,
+                                        result.ExpectedAvailable,
+                                        result.ExpectedCumulative,
+                                        current,
+                                        actual));
+                                throw new InvalidOperationException(
+                                    "页面原生计数中止：" +
+                                    (String.IsNullOrWhiteSpace(result.Error)
+                                        ? "unknown"
+                                        : result.Error));
+                            }
+                        }
+                        else
+                        {
+                            batchAfter = result.After;
                         }
 
-                        current = result.After;
+                        if (batchAfter == null)
+                        {
+                            throw new InvalidOperationException(
+                                "页面原生计数已返回，但没有可确认的快照。");
+                        }
+                        EnsureSameAccount(start, batchAfter);
+
+                        current = batchAfter;
                         sent += batch;
+                        preflightFailures = 0;
+                        incrementFailures = 0;
+                        postSaveRebaseFailures = 0;
                         long rate = stopwatch.Elapsed.TotalSeconds > 0
-                            ? (long)((current.Available - start.Available) /
+                            ? (long)((current.Available - reportStartAvailable) /
                                      Math.Max(1L, (long)stopwatch.Elapsed.TotalSeconds))
                             : 0;
+                        long confirmedDelta =
+                            current.Available - reportStartAvailable;
                         SetStatus(String.Format(
-                            "原生进度 {0:N0} / {1:N0}  ·  已确认 {2:N0}  ·  {3:N0}/秒",
+                            "原生进度 {0:N0} / {1:N0}  ·  页面增加 {2:N0}  ·  {3:N0}/秒",
                             current.Available,
-                            targetCount,
-                            sent,
+                            targetAvailable,
+                            confirmedDelta,
                             rate));
                         WriteLog(
                             "native_refill_progress",
                             String.Format(
-                                "available={0}; cumulative={1}; local={2}; consumed={3}; confirmed={4}",
+                                "available={0}; cumulative={1}; local={2}; consumed={3}; " +
+                                "confirmed={4}; preflight_recoveries={5}; " +
+                                "increment_recoveries={6}; post_save_recoveries={7}; " +
+                                "post_save_rebases={8}",
                                 current.Available,
                                 current.Cumulative,
                                 current.Local,
                                 current.Consumed,
-                                sent));
+                                sent,
+                                preflightRecoveries,
+                                incrementRecoveries,
+                                postSaveRecoveries,
+                                postSaveRebases));
                     }
 
+                    WriteLog(
+                        "native_refill_completed",
+                        String.Format(
+                            CultureInfo.InvariantCulture,
+                            "start_available={0}; start_cumulative={1}; " +
+                            "target_available={2}; target_cumulative={3}; " +
+                            "actual_available={4}; actual_cumulative={5}; " +
+                            "requested_confirmed={6}; preflight_recoveries={7}; " +
+                            "increment_recoveries={8}; post_save_recoveries={9}; " +
+                            "post_save_rebases={10}; transport_recoveries={11}; " +
+                            "reopened_available={12}; elapsed_ms={13}",
+                            reportStartAvailable,
+                            reportStartCumulative,
+                            targetAvailable,
+                            targetCumulative,
+                            current.Available,
+                            current.Cumulative,
+                            sent,
+                            preflightRecoveries,
+                            incrementRecoveries,
+                            postSaveRecoveries,
+                            postSaveRebases,
+                            transportRecoveries,
+                            start.Available,
+                            stopwatch.ElapsedMilliseconds));
                     finalStatus = String.Format(
-                        "原生计数完成：{0:N0} → {1:N0}，共确认 {2:N0}",
-                        start.Available,
+                        "原生计数完成：{0:N0} → {1:N0}，页面增加 {2:N0}；" +
+                        "预检恢复 {3} 次，增量重基准 {4} 次，" +
+                        "保存后复核恢复 {5} 次，保存回滚重基准 {6} 次",
+                        reportStartAvailable,
                         current.Available,
-                        sent);
+                        current.Available - reportStartAvailable,
+                        preflightRecoveries,
+                        incrementRecoveries,
+                        postSaveRecoveries,
+                        postSaveRebases);
                 }
             }
             catch (OperationCanceledException)
             {
                 finalStatus = "已取消本次 CDP 补次数";
+            }
+            catch (WebSocketException ex)
+            {
+                if (NativeRecoveryPolicy.CanRecoverSession(transportRecoveries))
+                {
+                    resumeRequested = true;
+                    resumeReason = ex.Message;
+                }
+                else
+                {
+                    failure = ex;
+                }
+            }
+            catch (TimeoutException ex)
+            {
+                if (NativeRecoveryPolicy.CanRecoverSession(transportRecoveries))
+                {
+                    resumeRequested = true;
+                    resumeReason = ex.Message;
+                }
+                else
+                {
+                    failure = ex;
+                }
             }
             catch (Exception ex)
             {
@@ -412,6 +865,28 @@ namespace WuwaTappoCdpHost
 
             if (failure != null)
                 throw failure;
+            if (resumeRequested)
+            {
+                WriteLog(
+                    "native_session_recovery",
+                    String.Format(
+                        CultureInfo.InvariantCulture,
+                        "recovery={0}; max={1}; reason={2}; " +
+                        "last_target_available={3}; last_target_cumulative={4}",
+                        transportRecoveries + 1,
+                        NativeRecoveryPolicy.MaxSessionRecoveries,
+                        resumeReason ?? "",
+                        targetAvailable,
+                        targetCumulative));
+                SleepWithCancellation(500, cancellationToken);
+                return RunRefillSession(
+                    amount,
+                    cancellationToken,
+                    transportRecoveries + 1,
+                    targetAvailable,
+                    targetCumulative,
+                    taskAccountKey);
+            }
             return restoreAttempted
                 ? finalStatus + " · 已恢复普通模式"
                 : finalStatus;
@@ -932,6 +1407,17 @@ namespace WuwaTappoCdpHost
             throw new InvalidOperationException(
                 "页面登录或计数状态未就绪。" +
                 (last == null ? "" : " " + last.Message));
+        }
+
+        private static void EnsureSameAccount(
+            NativePageSnapshot start,
+            NativePageSnapshot current)
+        {
+            if (NativeRecoveryPolicy.IsAccountChanged(start, current))
+            {
+                throw new InvalidOperationException(
+                    "页面登录状态或账号摘要发生变化，已停止补数。");
+            }
         }
 
         private static CdpTarget WaitForCdpTarget(

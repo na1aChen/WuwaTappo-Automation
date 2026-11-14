@@ -23,52 +23,99 @@
       await crypto.subtle.digest('SHA-256', encoded)))
       .map(value => value.toString(16).padStart(2, '0'))
       .join('');
-    if (!store.isLoggedIn || accountKey !== __ACCOUNT_KEY__)
-      return {ok:false,error:'login-or-account-changed'};
-
-    const before = {
-      available: Number(store.totalClickCount),
-      cumulative: Number(store.cumulativeClickCount),
-      local: Number(store.localClickCount),
-      consumed: Number(store.serverClickConsume)
-    };
-    if (before.available !== __BEFORE_AVAILABLE__ ||
-        before.cumulative !== __BEFORE_CUMULATIVE__ ||
-        before.local !== __BEFORE_LOCAL__ ||
-        before.consumed !== __BEFORE_CONSUMED__)
-      return {ok:false,error:'store-state-changed',before};
-
-    for (let index = 0; index < delta; index++) {
-      store.incrementLocalClickCount();
-      if (Number(store.localClickCount) !== before.local + index + 1 ||
-          Number(store.cumulativeClickCount) !== before.cumulative + index + 1 ||
-          Number(store.totalClickCount) !== before.available + index + 1)
-        throw new Error('increment-not-confirmed');
-    }
-
-    let saveError = '';
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await saveClicks(undefined, {force:true});
-        saveError = '';
-        break;
-      } catch (error) {
-        saveError = String(error && error.message ? error.message : error);
-        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-      }
-    }
-    if (saveError)
-      return {ok:false,error:'save-failed:' + saveError,before};
-
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const after = {
+    const readCounts = () => ({
       available: Number(store.totalClickCount),
       cumulative: Number(store.cumulativeClickCount),
       local: Number(store.localClickCount),
       consumed: Number(store.serverClickConsume),
       serverTotal: Number(store.serverClickTotal),
-      loggedIn: store.isLoggedIn
+      loggedIn: store.isLoggedIn,
+      accountKey
+    });
+    if (!store.isLoggedIn || accountKey !== __ACCOUNT_KEY__)
+      return {
+        ok:false,
+        error:'login-or-account-changed',
+        actual:readCounts()
+      };
+
+    const before = readCounts();
+    if (before.available !== __BEFORE_AVAILABLE__ ||
+        before.cumulative !== __BEFORE_CUMULATIVE__)
+      return {
+        ok:false,
+        error:'store-state-changed',
+        expected:{
+          available:__BEFORE_AVAILABLE__,
+          cumulative:__BEFORE_CUMULATIVE__,
+          local:__BEFORE_LOCAL__,
+          consumed:__BEFORE_CONSUMED__
+        },
+        before,
+        actual:before
+      };
+
+    const saveWithRetry = async () => {
+      let saveError = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await saveClicks(undefined, {force:true});
+          return '';
+        } catch (error) {
+          saveError = String(error && error.message ? error.message : error);
+          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        }
+      }
+      return saveError;
     };
+
+    for (let index = 0; index < delta; index++) {
+      store.incrementLocalClickCount();
+      if (Number(store.cumulativeClickCount) !== before.cumulative + index + 1 ||
+          Number(store.totalClickCount) !== before.available + index + 1) {
+        const actual = readCounts();
+        if (!actual.loggedIn || actual.accountKey !== accountKey)
+          return {
+            ok:false,
+            error:'login-or-account-changed',
+            actual
+          };
+        const partialIsSafe =
+          actual.available >= before.available &&
+          actual.cumulative >= before.cumulative;
+        const saveError = partialIsSafe ? await saveWithRetry() : '';
+        if (saveError)
+          return {
+            ok:false,
+            error:'save-failed:' + saveError,
+            delta,
+            before,
+            actual:readCounts(),
+            failed_index:index
+          };
+        return {
+          ok:false,
+          error:'increment-not-confirmed',
+          delta,
+          before,
+          actual,
+          failed_index:index
+        };
+      }
+    }
+
+    const saveError = await saveWithRetry();
+    if (saveError)
+      return {
+        ok:false,
+        error:'save-failed:' + saveError,
+        delta,
+        before,
+        actual:readCounts()
+      };
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const after = readCounts();
     const confirmed = after.loggedIn &&
       String(store.userInfo?.cuid ?? '') === account &&
       after.cumulative >= before.cumulative + delta &&
@@ -77,6 +124,10 @@
       ok: confirmed,
       error: confirmed ? '' : 'post-save-state-not-confirmed',
       delta,
+      expected:{
+        available:before.available + delta,
+        cumulative:before.cumulative + delta
+      },
       before,
       after
     };

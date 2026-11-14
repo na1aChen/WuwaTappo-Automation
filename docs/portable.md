@@ -5,13 +5,13 @@
 便携目录：
 
 ```text
-dist/WuwaTappoAutoChest-Portable-Native/
+dist/WuwaTappoAutoChest-Portable-Native-Recovery/
 ```
 
 可直接发送给朋友的压缩包：
 
 ```text
-dist/WuwaTappoAutoChest-Portable-Native.zip
+dist/WuwaTappoAutoChest-Portable-Native-Recovery.zip
 ```
 
 主启动器：
@@ -33,7 +33,7 @@ WuwaTappoAutoChest.exe
 
 ## 3. 使用流程
 
-1. 解压 `WuwaTappoAutoChest-Portable-Native.zip`；
+1. 解压 `WuwaTappoAutoChest-Portable-Native-Recovery.zip`；
 2. 启动并登录 Wuwa Tappo；
 3. 双击 `WuwaTappoAutoChest.exe`；
 4. 点击“启动后台”；
@@ -203,6 +203,8 @@ Worker + 控制面板工作集：约 78–88 MB
 |---:|---:|---|
 | 1000 | 约 0.58 秒 | 通过 |
 | 5000 | 约 2.86 秒 | 通过 |
-| 50000 | 约 26.12 秒 | 通过 |
+| 50,000 | 约 26.12 秒 | 通过 |
+| 500,000 | 约 262.8 秒 | 通过，命中 1 次安全回滚重基准 |
+| 1,000,000 | 约 525.1 秒 | 通过，命中 2 次安全回滚重基准 |
 
-50000 次时 Host 工作集约 45.7 MB，结束后正常退出并恢复 Wuwa Tappo。
+长任务期间 Host 工作集约 46–46.5 MB，结束后正常退出并恢复 Wuwa Tappo。500,000 与 1,000,000 次均精确达到绝对目标，没有重复计数。

@@ -68,6 +68,7 @@ $discoverScript = Join-Path $nativeDirectory "discover.js"
 $stateScript = Join-Path $nativeDirectory "state.js"
 $boostScript = Join-Path $nativeDirectory "boost.js"
 $nativeDesign = Join-Path $runtimeDirectory "docs\native-count-refill-design.md"
+$retryDesign = Join-Path $runtimeDirectory "docs\retry-recovery-design.md"
 $thirdPartyNotice = Join-Path $runtimeDirectory "docs\third-party-notices.md"
 
 Assert-True (Test-Path -LiteralPath $mainExe -PathType Leaf) "主程序存在"
@@ -78,6 +79,7 @@ Assert-True (Test-Path -LiteralPath $discoverScript -PathType Leaf) "页面能�
 Assert-True (Test-Path -LiteralPath $stateScript -PathType Leaf) "页面只读快照脚本存在"
 Assert-True (Test-Path -LiteralPath $boostScript -PathType Leaf) "页面原生补数脚本存在"
 Assert-True (Test-Path -LiteralPath $nativeDesign -PathType Leaf) "原生补数设计文档存在"
+Assert-True (Test-Path -LiteralPath $retryDesign -PathType Leaf) "恢复设计文档存在"
 Assert-True (Test-Path -LiteralPath $thirdPartyNotice -PathType Leaf) "第三方许可说明存在"
 
 if (Test-Path -LiteralPath $hostExe -PathType Leaf) {
@@ -140,10 +142,28 @@ Assert-True (
     $boostText.Contains("post-save-state-not-confirmed")
 ) "保存后必须重新验证页面状态"
 Assert-True (
+    $boostText.Contains("increment-not-confirmed") -and
+    $boostText.Contains("partialIsSafe")
+) "增量中断返回可安全重基准的现场"
+Assert-True (
+    -not $boostText.Contains("before.local !==") -and
+    -not $boostText.Contains("before.consumed !==")
+) "预检不把页面本地归并字段当作硬冲突"
+Assert-True (
     -not $boostText.Contains("document.cookie") -and
     -not $boostText.Contains("Authorization") -and
     -not $boostText.Contains("fetch(")
 ) "补数脚本不读取凭据或发送 HTTP 请求"
+
+$readmeText = Read-Text $readme
+Assert-True (
+    $readmeText.Contains("预检冲突") -and
+    $readmeText.Contains("只读复核")
+) "README.txt 说明安全恢复边界"
+Assert-True (
+    $readmeText.Contains("WebSocket") -and
+    $readmeText.Contains("3 次会话")
+) "README.txt 说明会话级恢复上限"
 
 if (Test-Path -LiteralPath $runtimeConfig -PathType Leaf) {
     $config = Get-Content -LiteralPath $runtimeConfig -Raw -Encoding UTF8 |
